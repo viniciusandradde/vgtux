@@ -149,7 +149,7 @@ select#dicas-rapidas option{background:var(--bg3)}
   <div class="stats-grid">
     <div class="stat-card">
       <div class="val" id="sessoes-hoje">–</div>
-      <div class="lbl">Sessões hoje</div><div class="sub">máx. 2</div>
+      <div class="lbl">Etapas hoje</div><div class="sub">máx. 2</div>
     </div>
     <div class="stat-card">
       <div class="val" id="total-livros">–</div>
@@ -157,7 +157,7 @@ select#dicas-rapidas option{background:var(--bg3)}
     </div>
     <div class="stat-card">
       <div class="val" id="total-sessoes">–</div>
-      <div class="lbl">Sessões total</div><div class="sub">desde o início</div>
+      <div class="lbl">Etapas concluídas</div><div class="sub">da jornada</div>
     </div>
     <div class="stat-card">
       <div class="val" id="dias-ativos">–</div>
@@ -208,11 +208,11 @@ select#dicas-rapidas option{background:var(--bg3)}
   <!-- HISTÓRICO -->
   <div class="card">
     <div class="card-header" onclick="toggleCard(this)">
-      <h2>📚 Histórico de Sessões e Livros</h2>
+      <h2>📚 Histórico de Etapas e Livros</h2>
       <span class="toggle-icon">▼</span>
     </div>
     <div class="card-body">
-      <div id="historico"><p class="sem-sessoes">Nenhuma sessão ainda.</p></div>
+      <div id="historico"><p class="sem-sessoes">Nenhuma etapa ainda.</p></div>
     </div>
   </div>
 
@@ -321,12 +321,15 @@ function conectarSSE() {
 }
 
 // ── Render ───────────────────────────────────────────────────
+var ETAPAS_TOTAL = 20;
+
 function renderEstado(e) {
   // Status
+  if (e.total && e.total.etapas_total) ETAPAS_TOTAL = e.total.etapas_total;
   const online = e.online?.ativo;
   document.getElementById('status-dot').className = 'dot ' + (online ? 'online' : 'offline');
   document.getElementById('status-text').textContent = online
-    ? `Filho online — sessão ${e.online.sessao}/2`
+    ? `Filho online — etapa ${e.online.sessao}/${(e.total && e.total.etapas_total) || 20}`
     : 'Filho offline';
 
   // Timer
@@ -353,7 +356,8 @@ function renderEstado(e) {
   document.getElementById('sessoes-hoje').textContent =
     (e.hoje.sessoes_usadas || 0) + '/2';
   document.getElementById('total-livros').textContent  = e.total.livros  || 0;
-  document.getElementById('total-sessoes').textContent = e.total.sessoes || 0;
+  document.getElementById('total-sessoes').textContent =
+    (e.total.sessoes || 0) + '/' + (e.total.etapas_total || 20);
   document.getElementById('dias-ativos').textContent   = e.total.dias    || 0;
 
   // Trail
@@ -393,7 +397,7 @@ function renderTrail(trail) {
 function renderHistorico(sessoes) {
   const el = document.getElementById('historico');
   if (!sessoes.length) {
-    el.innerHTML = '<p class="sem-sessoes">Nenhuma sessão ainda.</p>';
+    el.innerHTML = '<p class="sem-sessoes">Nenhuma etapa ainda.</p>';
     return;
   }
   el.innerHTML = sessoes.map((s, i) => {
@@ -409,7 +413,7 @@ function renderHistorico(sessoes) {
       </div>` : '';
     return `<div class="sessao-card">
       <div class="sessao-head">
-        <span class="s-num">Sessão ${s.numero_do_dia || '?'}/2</span>
+        <span class="s-num">Etapa ${s.numero || s.numero_do_dia || '?'}/${ETAPAS_TOTAL}</span>
         <span class="s-data">${s.data || ''}</span>
         <span class="s-badge ${s.completa ? 'c' : 'i'}">${s.completa ? '✔ completa' : '⏳ incompleta'}</span>
       </div>

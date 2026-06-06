@@ -2,12 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 ╔══════════════════════════════════════════════════════════════╗
-║         GERENCIADOR DE SESSÕES EDUCACIONAIS v2               ║
+║         GERENCIADOR DE SESSÕES EDUCACIONAIS v1.1            ║
 ║              Minecraft Quest — Pai Vinny                     ║
+║   Jornada de 20 etapas (desafios Linux), máx. 2 por dia.    ║
 ╚══════════════════════════════════════════════════════════════╝
 """
 
-import os, sys, json, time, signal, subprocess, threading
+import os, sys, json, time, secrets, subprocess, threading
 from datetime import date, datetime
 from pathlib import Path
 
@@ -16,17 +17,22 @@ from pathlib import Path
 # ═══════════════════════════════════════════════════════════════
 SESSAO_MINUTOS   = int(os.environ.get('SESSAO_MINUTOS', '30'))
 LEITURA_MINUTOS  = int(os.environ.get('LEITURA_MINUTOS', '30'))
-SESSOES_POR_DIA  = 2
+ETAPAS_POR_DIA   = int(os.environ.get('ETAPAS_POR_DIA', '2'))
+TOTAL_ETAPAS     = 20
 LINHAS_BASE      = 10
 CICLO_DIAS       = 10
 CICLO_INCREMENTO = 2
 
-DATA_DIR      = Path('/data')
-DATA_FILE     = DATA_DIR / 'historico.json'
-TRAIL_FILE    = DATA_DIR / 'trail.log'
-ONLINE_FILE   = DATA_DIR / 'online.json'
-DICAS_FILE    = DATA_DIR / 'dicas.json'
-MENSAGEM_FILE = DATA_DIR / 'mensagem.txt'
+ADMIN_DOMAIN = os.environ.get('ADMIN_DOMAIN', 'adminvgtux.vsanexus.com')
+
+DATA_DIR        = Path('/data')
+DATA_FILE       = DATA_DIR / 'historico.json'
+TRAIL_FILE      = DATA_DIR / 'trail.log'
+ONLINE_FILE     = DATA_DIR / 'online.json'
+DICAS_FILE      = DATA_DIR / 'dicas.json'
+MENSAGEM_FILE   = DATA_DIR / 'mensagem.txt'
+RESUMO_PEND     = DATA_DIR / 'resumo_pendente.json'
+RESUMO_ENVIADO  = DATA_DIR / 'resumo_enviado.json'
 
 # ═══════════════════════════════════════════════════════════════
 # CORES ANSI
@@ -45,6 +51,172 @@ class C:
 
 def cor(texto, *estilos):
     return ''.join(estilos) + str(texto) + C.RESET
+
+# ═══════════════════════════════════════════════════════════════
+# AS 20 ETAPAS — desafios Linux progressivos
+# Cada etapa: título, missão, dica, comando de verificação (bash),
+# e uma pista (teaser) da próxima. A verificação roda como o jogador,
+# com $HOME apontando para a casa dele.
+# ═══════════════════════════════════════════════════════════════
+ETAPAS = [
+    {  # 1
+        "titulo": "Primeiro Contato",
+        "missao": "Toda aventura começa com um lar. Crie uma pasta chamada\n"
+                  "  'aventura' na sua casa — será sua base de operações.",
+        "dica":   "Use:  mkdir aventura     (veja onde está com  pwd  e  ls )",
+        "verificar": 'test -d "$HOME/aventura"',
+        "teaser": "Toda base precisa de um diário de bordo...",
+    },
+    {  # 2
+        "titulo": "O Diário de Bordo",
+        "missao": "Entre na pasta 'aventura' e crie um arquivo vazio\n"
+                  "  chamado 'diario.txt'.",
+        "dica":   "Use:  cd aventura   e depois   touch diario.txt",
+        "verificar": 'test -f "$HOME/aventura/diario.txt"',
+        "teaser": "Um diário em branco não conta história nenhuma...",
+    },
+    {  # 3
+        "titulo": "As Primeiras Palavras",
+        "missao": "Escreva o seu nome dentro do 'diario.txt'.\n"
+                  "  O arquivo não pode mais ficar vazio!",
+        "dica":   'Use:  echo "Meu Nome" > diario.txt',
+        "verificar": 'test -s "$HOME/aventura/diario.txt"',
+        "teaser": "Aprenda a ler o que você mesmo escreveu...",
+    },
+    {  # 4
+        "titulo": "O Leitor",
+        "missao": "Leia o diario.txt na tela com 'cat'. Depois crie um novo\n"
+                  "  arquivo 'dia2.txt' com uma frase sobre seu dia.",
+        "dica":   'Use:  cat diario.txt    e depois    echo "Hoje eu..." > dia2.txt',
+        "verificar": 'test -s "$HOME/aventura/dia2.txt"',
+        "teaser": "Heróis sempre guardam uma cópia de segurança...",
+    },
+    {  # 5
+        "titulo": "Cópia de Segurança",
+        "missao": "Faça uma cópia do 'diario.txt' chamada 'backup.txt'.",
+        "dica":   "Use:  cp diario.txt backup.txt",
+        "verificar": 'test -f "$HOME/aventura/backup.txt"',
+        "teaser": "Às vezes um nome precisa mudar...",
+    },
+    {  # 6
+        "titulo": "O Renomeador",
+        "missao": "Renomeie 'dia2.txt' para 'memorias.txt'\n"
+                  "  (o dia2.txt deve deixar de existir).",
+        "dica":   "Use:  mv dia2.txt memorias.txt",
+        "verificar": 'test -f "$HOME/aventura/memorias.txt" && ! test -f "$HOME/aventura/dia2.txt"',
+        "teaser": "Um bom explorador mantém seus tesouros organizados...",
+    },
+    {  # 7
+        "titulo": "O Organizador",
+        "missao": "Crie uma pasta 'tesouros' dentro de aventura e mova o\n"
+                  "  'backup.txt' para dentro dela.",
+        "dica":   "Use:  mkdir tesouros   e depois   mv backup.txt tesouros/",
+        "verificar": 'test -f "$HOME/aventura/tesouros/backup.txt"',
+        "teaser": "Quantas coisas você consegue listar?",
+    },
+    {  # 8
+        "titulo": "A Lista",
+        "missao": "Crie 'lista.txt' com pelo menos 5 linhas — 5 coisas\n"
+                  "  de que você gosta, uma por linha.",
+        "dica":   'Use várias vezes:  echo "futebol" >> lista.txt  (>> adiciona)',
+        "verificar": 'test "$(wc -l < "$HOME/aventura/lista.txt" 2>/dev/null || echo 0)" -ge 5',
+        "teaser": "E se você precisar PROCURAR algo no meio de tudo?",
+    },
+    {  # 9
+        "titulo": "O Caçador (grep)",
+        "missao": "Procure uma palavra dentro de 'lista.txt' usando grep e\n"
+                  "  salve o que encontrar em 'achado.txt'.",
+        "dica":   "Use:  grep palavra lista.txt > achado.txt",
+        "verificar": 'test -f "$HOME/aventura/achado.txt"',
+        "teaser": "Hora de criar seu primeiro feitiço executável...",
+    },
+    {  # 10
+        "titulo": "O Pequeno Feiticeiro",
+        "missao": "Crie um script 'ola.sh' que imprime uma saudação e\n"
+                  "  torne-o executável.",
+        "dica":   "echo 'echo Ola, mundo' > ola.sh   e depois   chmod +x ola.sh",
+        "verificar": 'test -x "$HOME/aventura/ola.sh"',
+        "teaser": "Um feitiço só tem valor quando é lançado...",
+    },
+    {  # 11
+        "titulo": "Lançando o Feitiço",
+        "missao": "Execute o 'ola.sh' e guarde a saída dele em 'saida.txt'.",
+        "dica":   "Use:  ./ola.sh > saida.txt",
+        "verificar": 'test -s "$HOME/aventura/saida.txt"',
+        "teaser": "Que horas são no mundo da máquina?",
+    },
+    {  # 12
+        "titulo": "O Relógio do Sistema",
+        "missao": "Salve a data e a hora atuais dentro de 'tempo.txt'.",
+        "dica":   "Use:  date > tempo.txt",
+        "verificar": 'test -s "$HOME/aventura/tempo.txt"',
+        "teaser": "Comandos podem se unir como peças de LEGO (|)...",
+    },
+    {  # 13
+        "titulo": "A Engrenagem (pipe)",
+        "missao": "Conte quantos arquivos existem na pasta e salve o número\n"
+                  "  em 'quantos.txt' — ligando dois comandos com um '|'.",
+        "dica":   "Use:  ls | wc -l > quantos.txt",
+        "verificar": 'test -s "$HOME/aventura/quantos.txt"',
+        "teaser": "A máquina pode guardar segredos em variáveis...",
+    },
+    {  # 14
+        "titulo": "O Segredo Guardado",
+        "missao": "Crie uma variável com o nome do seu herói e use echo para\n"
+                  "  gravar esse valor em 'heroi.txt'.",
+        "dica":   'Use:  HEROI=Steve   e depois   echo "$HEROI" > heroi.txt',
+        "verificar": 'test -s "$HOME/aventura/heroi.txt"',
+        "teaser": "E se um tesouro estiver escondido em qualquer lugar?",
+    },
+    {  # 15
+        "titulo": "O Mapa do Tesouro (find)",
+        "missao": "Use 'find' para listar todos os arquivos .txt e salve esse\n"
+                  "  mapa em 'mapa.txt'.",
+        "dica":   'Use:  find . -name "*.txt" > mapa.txt',
+        "verificar": 'test -s "$HOME/aventura/mapa.txt"',
+        "teaser": "Ordem traz clareza — coloque tudo em ordem...",
+    },
+    {  # 16
+        "titulo": "A Ordem (sort)",
+        "missao": "Ordene as linhas de 'lista.txt' em ordem alfabética e\n"
+                  "  salve o resultado em 'ordenado.txt'.",
+        "dica":   "Use:  sort lista.txt > ordenado.txt",
+        "verificar": 'test -s "$HOME/aventura/ordenado.txt"',
+        "teaser": "Quem é você dentro desta máquina?",
+    },
+    {  # 17
+        "titulo": "Quem Sou Eu?",
+        "missao": "Descubra o nome do seu usuário no sistema e salve-o\n"
+                  "  em 'eu.txt'.",
+        "dica":   "Use:  whoami > eu.txt",
+        "verificar": 'test -s "$HOME/aventura/eu.txt"',
+        "teaser": "Tesouros viajam melhor quando empacotados...",
+    },
+    {  # 18
+        "titulo": "O Empacotador (tar)",
+        "missao": "Empacote a pasta 'tesouros' inteira em um arquivo\n"
+                  "  chamado 'tesouros.tar'.",
+        "dica":   "Use:  tar -cf tesouros.tar tesouros",
+        "verificar": 'test -f "$HOME/aventura/tesouros.tar"',
+        "teaser": "Junte suas histórias numa só...",
+    },
+    {  # 19
+        "titulo": "A Grande União",
+        "missao": "Junte o conteúdo de 'diario.txt' e 'lista.txt' em um único\n"
+                  "  arquivo chamado 'tudo.txt'.",
+        "dica":   "Use:  cat diario.txt lista.txt > tudo.txt",
+        "verificar": 'test -s "$HOME/aventura/tudo.txt"',
+        "teaser": "O FINAL está próximo. Prepare sua conquista...",
+    },
+    {  # 20
+        "titulo": "A Conquista Final",
+        "missao": "Você chegou ao fim da jornada! Crie 'conquista.txt' e\n"
+                  "  escreva a frase:  COMPLETEI A JORNADA",
+        "dica":   'Use:  echo "COMPLETEI A JORNADA" > conquista.txt',
+        "verificar": 'grep -qi "completei a jornada" "$HOME/aventura/conquista.txt" 2>/dev/null',
+        "teaser": "",
+    },
+]
 
 # ═══════════════════════════════════════════════════════════════
 # MENSAGEM DO PAI VINNY
@@ -93,22 +265,30 @@ def _garantir_data():
 
 def carregar_dados():
     _garantir_data()
+    dados = {"inicio": str(date.today()), "etapa_atual": 1, "etapas": []}
     if DATA_FILE.exists():
         try:
             with open(DATA_FILE) as f:
-                return json.load(f)
+                dados = json.load(f)
         except Exception:
             pass
-    return {"inicio": str(date.today()), "sessoes": []}
+    # Migração de formatos antigos (v1.0 usava "sessoes")
+    if "etapas" not in dados:
+        dados["etapas"] = dados.pop("sessoes", [])
+    if "etapa_atual" not in dados:
+        completas = len([e for e in dados["etapas"] if e.get("completa")])
+        dados["etapa_atual"] = min(completas + 1, TOTAL_ETAPAS + 1)
+    dados.setdefault("inicio", str(date.today()))
+    return dados
 
 def salvar_dados(dados):
     _garantir_data()
     with open(DATA_FILE, 'w') as f:
         json.dump(dados, f, indent=2, ensure_ascii=False)
 
-def sessoes_hoje(dados):
+def etapas_completas_hoje(dados):
     hoje = str(date.today())
-    return [s for s in dados["sessoes"] if s.get("data") == hoje]
+    return [e for e in dados["etapas"] if e.get("data") == hoje and e.get("completa")]
 
 def calcular_linhas_minimas(dados):
     try:
@@ -118,16 +298,25 @@ def calcular_linhas_minimas(dados):
     except Exception:
         return LINHAS_BASE
 
+def escrever_trail(msg):
+    try:
+        _garantir_data()
+        carimbo = datetime.now().strftime('%d/%m %H:%M')
+        with open(TRAIL_FILE, 'a') as f:
+            f.write(f"[{carimbo}] {msg}\n")
+    except Exception:
+        pass
+
 # ═══════════════════════════════════════════════════════════════
 # HEARTBEAT + MENSAGENS PARA O PORTAL
 # ═══════════════════════════════════════════════════════════════
 
-def escrever_heartbeat(num_sessao, inicio_iso, pid):
+def escrever_heartbeat(num_etapa, inicio_iso, pid):
     try:
         _garantir_data()
         ONLINE_FILE.write_text(json.dumps({
             "ativo":   True,
-            "sessao":  num_sessao,
+            "sessao":  num_etapa,
             "inicio":  inicio_iso,
             "pid":     pid,
             "ts":      datetime.now().isoformat()
@@ -159,7 +348,6 @@ def verificar_mensagem(bash_pid):
                     f'  ╚══════════════════════════════════════╝{C.RESET}\n'
                     f'  {C.BRANCO}{content}{C.RESET}\n\n'
                 )
-                # Escreve diretamente no terminal do processo bash
                 try:
                     with open(f'/proc/{bash_pid}/fd/1', 'w') as tty:
                         tty.write(msg)
@@ -210,18 +398,18 @@ def pausar(msg="  Pressione ENTER para continuar..."):
         pass
 
 def mostrar_biblioteca(dados):
-    sessoes_com_resumo = [s for s in dados["sessoes"] if s.get("titulo_livro")]
-    if not sessoes_com_resumo:
+    com_resumo = [e for e in dados["etapas"] if e.get("titulo_livro")]
+    if not com_resumo:
         return
     print(f"\n{cor('  📚 SUA BIBLIOTECA:', C.VERDE, C.NEGRITO)}")
     separador('─', 58, C.VERDE)
-    for i, s in enumerate(sessoes_com_resumo[-8:], 1):
+    for i, e in enumerate(com_resumo[-8:], 1):
         idx     = cor(f'{i:2}.', C.DIM)
-        titulo  = cor(s.get('titulo_livro', '?'), C.BRANCO)
-        linhas  = cor(f"{s.get('linhas_resumo', '?')} linhas", C.AMARELO)
-        data    = cor(f"[{s.get('data', '')}]", C.DIM)
+        titulo  = cor(e.get('titulo_livro', '?'), C.BRANCO)
+        linhas  = cor(f"{e.get('linhas_resumo', '?')} linhas", C.AMARELO)
+        data    = cor(f"[{e.get('data', '')}]", C.DIM)
         print(f"  {idx}  {titulo}  {linhas}  {data}")
-    total = cor(f"Total: {len(sessoes_com_resumo)} livro(s)  🏆", C.CIANO)
+    total = cor(f"Total: {len(com_resumo)} livro(s)  🏆", C.CIANO)
     print(f"\n  {total}")
     separador('─', 58, C.VERDE)
 
@@ -229,21 +417,19 @@ def mostrar_biblioteca(dados):
 # SESSÃO BASH COM TIMER
 # ═══════════════════════════════════════════════════════════════
 
-def executar_sessao_bash(minutos, num_sessao=1, inicio_iso=None):
+def executar_sessao_bash(minutos, num_etapa=1, inicio_iso=None):
     resultado = {'motivo': 'saiu'}
     if inicio_iso is None:
         inicio_iso = datetime.now().isoformat()
 
     proc = subprocess.Popen(['/bin/bash', '-i'])
 
-    # Thread: heartbeat a cada 30 s
     def heartbeat_loop():
         while proc.poll() is None:
-            escrever_heartbeat(num_sessao, inicio_iso, proc.pid)
+            escrever_heartbeat(num_etapa, inicio_iso, proc.pid)
             time.sleep(30)
         escrever_offline()
 
-    # Thread: verifica mensagem do pai a cada 5 s
     def mensagem_loop():
         while proc.poll() is None:
             verificar_mensagem(proc.pid)
@@ -254,7 +440,7 @@ def executar_sessao_bash(minutos, num_sessao=1, inicio_iso=None):
             with open(f'/proc/{proc.pid}/fd/1', 'w') as tty:
                 tty.write(
                     f'\n\n{C.AMARELO}{C.NEGRITO}'
-                    f'  ⚠️   5 minutos restantes na sessão!{C.RESET}\n\n'
+                    f'  ⚠️   5 minutos restantes nesta etapa!{C.RESET}\n\n'
                 )
         except Exception:
             pass
@@ -266,15 +452,14 @@ def executar_sessao_bash(minutos, num_sessao=1, inicio_iso=None):
         except ProcessLookupError:
             pass
 
-    # Escreve estado inicial antes de iniciar as threads
-    escrever_heartbeat(num_sessao, inicio_iso, proc.pid)
+    escrever_heartbeat(num_etapa, inicio_iso, proc.pid)
 
     th = threading.Thread(target=heartbeat_loop, daemon=True)
     tm = threading.Thread(target=mensagem_loop,  daemon=True)
     th.start()
     tm.start()
 
-    t_aviso = threading.Timer((minutos - 5) * 60, aviso_cinco)
+    t_aviso = threading.Timer(max(1, (minutos - 5)) * 60, aviso_cinco)
     t_fim   = threading.Timer(minutos * 60, encerrar)
     t_aviso.start()
     t_fim.start()
@@ -292,6 +477,20 @@ def executar_sessao_bash(minutos, num_sessao=1, inicio_iso=None):
     return resultado['motivo']
 
 # ═══════════════════════════════════════════════════════════════
+# VERIFICAÇÃO DO DESAFIO
+# ═══════════════════════════════════════════════════════════════
+
+def verificar_missao(etapa):
+    """Roda o comando de verificação da etapa como o jogador. True se concluiu."""
+    try:
+        r = subprocess.run(['/bin/bash', '-lc', etapa['verificar']],
+                           timeout=15,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return r.returncode == 0
+    except Exception:
+        return False
+
+# ═══════════════════════════════════════════════════════════════
 # TEMPORIZADOR DE LEITURA
 # ═══════════════════════════════════════════════════════════════
 
@@ -305,7 +504,7 @@ def temporizador_leitura(minutos):
 
   👉  Vá até sua estante de livros.
   👉  Escolha um livro e leia com atenção.
-  👉  Quando terminar, volte aqui para escrever o resumo.
+  👉  Quando terminar, volte aqui para registrar o resumo.
 
   {cor('Quando estiver com o livro em mãos, pressione ENTER', C.VERDE)}
   {cor('para iniciar o cronômetro.', C.VERDE)}
@@ -325,10 +524,8 @@ def temporizador_leitura(minutos):
             pct    = int((elapsed / segundos_total) * 32)
             barra  = cor('█' * pct, C.MAGENTA) + cor('░' * (32 - pct), C.DIM)
             mins, secs = divmod(restante, 60)
-            sys.stdout.write(
-                f"\r  ⏱  {cor(f'{mins:02d}:{secs:02d}', C.AMARELO, C.NEGRITO)} "
-                f"restantes  [{barra}]  "
-            )
+            relogio = cor(f'{mins:02d}:{secs:02d}', C.AMARELO, C.NEGRITO)
+            sys.stdout.write(f"\r  ⏱  {relogio} restantes  [{barra}]  ")
             sys.stdout.flush()
             if restante in avisos:
                 sys.stdout.write(f"\r  {cor(avisos[restante], C.CIANO)}" + ' ' * 20 + '\n')
@@ -349,140 +546,250 @@ def temporizador_leitura(minutos):
     sys.stdout.flush()
 
 # ═══════════════════════════════════════════════════════════════
-# COLETA E VALIDAÇÃO DO RESUMO
+# RESUMO DO LIVRO — ENVIADO PELO PORTAL WEB
 # ═══════════════════════════════════════════════════════════════
 
-def coletar_resumo(linhas_minimas):
-    limpar()
-    separador('═', 58, C.VERDE)
-    print(cor('  ✍️   RESUMO DO LIVRO', C.VERDE, C.NEGRITO))
-    separador('═', 58, C.VERDE)
-    print(f"""
-  Escreva o que você aprendeu com o livro.
+def coletar_resumo_portal(numero_etapa, linhas_minimas):
+    """Gera um link para o portal, aguarda o filho enviar o resumo de lá.
+    Retorna (titulo, resumo, n_linhas) ou None se ele cancelar (Ctrl+C)."""
+    token = secrets.token_urlsafe(6)
+    try:
+        RESUMO_ENVIADO.unlink(missing_ok=True)
+    except Exception:
+        pass
+    RESUMO_PEND.write_text(json.dumps({
+        "token":          token,
+        "etapa":          numero_etapa,
+        "linhas_minimas": linhas_minimas,
+        "criado":         datetime.now().isoformat(),
+        "enviado":        False,
+    }, ensure_ascii=False))
 
-  Regras:
-    ✅  Mínimo de {cor(str(linhas_minimas), C.AMARELO, C.NEGRITO)} linhas
-    ✅  Cada linha com pelo menos 20 caracteres
-    ✅  Com suas próprias palavras
-
-  Quando terminar, escreva {cor('FIM', C.VERMELHO, C.NEGRITO)} numa linha sozinha.
-""")
-    separador('─', 58)
-
-    while True:
-        try:
-            titulo_livro = input(f"\n  {cor('Título do livro:', C.CIANO)} ").strip()
-        except (EOFError, KeyboardInterrupt):
-            titulo_livro = "Livro sem título"
-            break
-        if titulo_livro:
-            break
-        print(cor("  ⚠️  Por favor, informe o título.", C.AMARELO))
-
-    print(f"\n  {cor('Escreva seu resumo linha por linha:', C.VERDE)}\n")
-    linhas_resumo = []
-    num_linha = 1
-
-    while True:
-        try:
-            linha = input(f"  {cor(f'Linha {num_linha:2}:', C.DIM)} ")
-        except (EOFError, KeyboardInterrupt):
-            break
-
-        if linha.strip().upper() == "FIM":
-            break
-        if not linha.strip():
-            print(cor("  (linha em branco ignorada)", C.DIM))
-            continue
-        if len(linha.strip()) < 20:
-            print(cor("  ❌  Linha muito curta. Explique melhor e tente de novo.", C.VERMELHO))
-            continue
-
-        linhas_resumo.append(linha.strip())
-        faltam = max(0, linhas_minimas - len(linhas_resumo))
-        if faltam > 0:
-            print(cor(f"  ✔  {len(linhas_resumo)}/{linhas_minimas} — faltam {faltam}!", C.DIM))
-        else:
-            extra = len(linhas_resumo) - linhas_minimas
-            bonus = f"  (+{extra} bônus! 🌟)" if extra else ""
-            print(cor(f"  ✔  Linha {len(linhas_resumo)} — mínimo atingido!{bonus}", C.VERDE))
-        num_linha += 1
-
-    if len(linhas_resumo) < linhas_minimas:
-        limpar()
-        print(f"\n{cor('  ❌  Resumo incompleto!', C.VERMELHO, C.NEGRITO)}")
-        print(f"  Você escreveu {len(linhas_resumo)} linha(s) mas precisa de {linhas_minimas}.")
-        pausar()
-        return coletar_resumo(linhas_minimas)
+    url = f"https://{ADMIN_DOMAIN}/resumo?t={token}"
 
     limpar()
     separador('═', 58, C.VERDE)
-    print(cor('  ✅  RESUMO APROVADO!', C.VERDE, C.NEGRITO))
+    print(cor('  ✍️   RESUMO DO LIVRO  —  pelo portal web', C.VERDE, C.NEGRITO))
     separador('═', 58, C.VERDE)
     print(f"""
-  📖 Livro:  {cor(titulo_livro, C.BRANCO, C.NEGRITO)}
-  📝 Linhas: {cor(str(len(linhas_resumo)), C.AMARELO, C.NEGRITO)}
+  Agora registre o que você aprendeu no livro.
+  Desta vez você escreve pelo {cor('navegador', C.CIANO, C.NEGRITO)}, no portal!
 
-  Incrível! Você registrou {len(linhas_resumo)} ideias na sua memória.
+  {cor('1.', C.AMARELO)}  Abra este link no celular ou no computador:
+
+      {cor(url, C.CIANO, C.NEGRITO)}
+
+  {cor('2.', C.AMARELO)}  Escreva o título do livro e o resumo
+      ({cor(f'mínimo {linhas_minimas} linhas, cada uma com 20+ caracteres', C.DIM)})
+
+  {cor('3.', C.AMARELO)}  Toque em ENVIAR. Esta tela vai liberar sozinha. ✨
+
+  {cor('📱  No celular:', C.MAGENTA, C.NEGRITO)} abra o navegador (Chrome/Safari) e
+      digite o endereço acima na barra de busca.
 """)
-    return titulo_livro, '\n'.join(linhas_resumo), len(linhas_resumo)
+    separador('─', 58, C.VERDE)
+    print(cor("\n  ⏳  Aguardando o seu resumo chegar pelo portal...", C.AMARELO))
+    print(cor("     (se precisar, você pode pressionar Ctrl+C para sair e\n"
+              "      voltar depois — sua etapa fica salva)", C.DIM))
+
+    giro = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    i = 0
+    try:
+        while True:
+            if RESUMO_ENVIADO.exists():
+                try:
+                    data = json.loads(RESUMO_ENVIADO.read_text())
+                except Exception:
+                    data = {}
+                if data.get("token") == token:
+                    RESUMO_ENVIADO.unlink(missing_ok=True)
+                    RESUMO_PEND.unlink(missing_ok=True)
+                    sys.stdout.write("\r" + " " * 50 + "\r")
+                    return (data.get("titulo", "Livro"),
+                            data.get("resumo", ""),
+                            int(data.get("linhas", 0)))
+            sys.stdout.write(f"\r  {cor(giro[i % len(giro)], C.CIANO)}  aguardando envio... ")
+            sys.stdout.flush()
+            i += 1
+            time.sleep(2)
+    except KeyboardInterrupt:
+        print(cor("\n\n  Sem problema! Volte quando enviar o resumo. 👋", C.DIM))
+        return None
 
 # ═══════════════════════════════════════════════════════════════
 # TELAS
 # ═══════════════════════════════════════════════════════════════
 
-def tela_inicio_sessao(dados, numero_sessao):
-    lmin        = calcular_linhas_minimas(dados)
-    total_livros= len([s for s in dados["sessoes"] if s.get("titulo_livro")])
-    total_sess  = len(dados["sessoes"])
+def tela_inicio_etapa(dados, numero, etapa):
+    total_livros = len([e for e in dados["etapas"] if e.get("titulo_livro")])
+    feitas_hoje  = len(etapas_completas_hoje(dados))
     limpar()
     separador('═', 58, C.VERDE)
-    print(cor(f'  ⚔   MINECRAFT QUEST — SESSÃO {numero_sessao} DE {SESSOES_POR_DIA}', C.VERDE, C.NEGRITO))
+    print(cor(f'  ⚔   QUEST LINUX — ETAPA {numero} DE {TOTAL_ETAPAS}', C.VERDE, C.NEGRITO))
     separador('═', 58, C.VERDE)
     print(f"""
-  {cor('Bem-vindo, Explorador!', C.BRANCO, C.NEGRITO)}
+  {cor(etapa['titulo'], C.CIANO, C.NEGRITO)}
 
   🗓  Data:            {cor(str(date.today()), C.CIANO)}
-  ⏱  Duração:         {cor(f'{SESSAO_MINUTOS} minutos', C.AMARELO)}
+  ⏱  Tempo da etapa:  {cor(f'{SESSAO_MINUTOS} minutos', C.AMARELO)}
   📚  Livros lidos:    {cor(str(total_livros), C.VERDE)}
-  🏆  Total sessões:   {cor(str(total_sess), C.VERDE)}
-  📝  Linhas mínimas:  {cor(str(lmin), C.AMARELO)} {cor(f'(+{CICLO_INCREMENTO} a cada {CICLO_DIAS} dias)', C.DIM)}
+  🎯  Hoje:            {cor(f'{feitas_hoje}/{ETAPAS_POR_DIA} etapas', C.AMARELO)}
 """)
-    separador('─', 58)
-    mostrar_biblioteca(dados)
-    pausar("  Pressione ENTER para iniciar a sessão...")
+    separador('─', 58, C.AMARELO)
+    print(cor('\n  🧩  SUA MISSÃO:', C.AMARELO, C.NEGRITO))
+    print(f"\n  {cor(etapa['missao'], C.BRANCO)}\n")
+    print(cor(f"  💡  Dica:  {etapa['dica']}", C.DIM))
+    separador('─', 58, C.AMARELO)
+    print(cor("\n  Quando terminar a missão, digite  exit  para eu conferir.", C.VERDE))
+    pausar("  Pressione ENTER para começar a explorar...")
 
-def tela_sessao_encerrada(motivo):
+def tela_missao_incompleta(etapa):
     limpar()
-    separador('═', 58, C.AMARELO)
-    print(cor('  ⏰  SESSÃO ENCERRADA', C.AMARELO, C.NEGRITO))
-    separador('═', 58, C.AMARELO)
-    if motivo == 'timeout':
-        print(f"""
-  {cor('Seu tempo de exploração acabou!', C.VERMELHO, C.NEGRITO)}
+    separador('═', 58, C.VERMELHO)
+    print(cor('  🔍  MISSÃO AINDA NÃO CONCLUÍDA', C.VERMELHO, C.NEGRITO))
+    separador('═', 58, C.VERMELHO)
+    print(f"""
+  Quase lá! Ainda não encontrei o que a missão pede.
 
-  Para desbloquear sua segunda sessão:
+  {cor('🧩  Missão:', C.AMARELO)}
+  {cor(etapa['missao'], C.BRANCO)}
 
-    📖  Vá até sua estante de livros
-    ⏱   Leia por {cor(str(LEITURA_MINUTOS), C.AMARELO)} minutos
-    ✍️   Escreva um resumo e ganhe mais {cor(str(SESSAO_MINUTOS), C.VERDE)} min!
+  {cor('💡  Dica:', C.CIANO)}  {etapa['dica']}
+
+  Vamos tentar de novo — você consegue!
 """)
+    separador('─', 58, C.VERMELHO)
+    try:
+        resp = input(cor("\n  ENTER para voltar ao terminal  •  'sair' para sair: ", C.DIM)).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return False
+    return resp != 'sair'
+
+def tela_desafio_concluido(etapa):
+    limpar()
+    separador('═', 58, C.VERDE)
+    print(cor('  ✅  DESAFIO CONCLUÍDO!', C.VERDE, C.NEGRITO))
+    separador('═', 58, C.VERDE)
+    print(f"""
+  Mandou muito bem na etapa "{cor(etapa['titulo'], C.CIANO, C.NEGRITO)}"!
+
+  Agora vem a parte que constrói a sua mente: a leitura.
+  Para liberar a próxima etapa, leia e registre um resumo.
+""")
+    pausar("  Pressione ENTER para começar o tempo de leitura...")
+
+def tela_etapa_concluida(dados, numero, etapa):
+    limpar()
+    separador('═', 58, C.VERDE)
+    print(cor(f'  🏆  ETAPA {numero} CONCLUÍDA!', C.VERDE, C.NEGRITO))
+    separador('═', 58, C.VERDE)
+    restantes = TOTAL_ETAPAS - numero
+    print(f"""
+  📚 Livro registrado na sua biblioteca!
+  ✅ Etapas concluídas: {cor(f'{numero}/{TOTAL_ETAPAS}', C.AMARELO, C.NEGRITO)}
+""")
+    mostrar_biblioteca(dados)
+    if numero < TOTAL_ETAPAS and etapa.get('teaser'):
+        proxima = ETAPAS[numero]  # próxima etapa (0-based -> numero)
+        print(cor(f"\n  🔮  PRÓXIMA ETAPA ({numero + 1}): {proxima['titulo']}", C.MAGENTA, C.NEGRITO))
+        print(cor(f"      {etapa['teaser']}", C.DIM))
+    if restantes > 0:
+        print(cor(f"\n  Faltam {restantes} etapa(s) para a grande recompensa final! 🎁", C.CIANO))
 
 def tela_limite_diario(dados):
     limpar()
     separador('═', 58, C.MAGENTA)
     print(cor('  🌙  FIM DO DIA — LIMITE ATINGIDO', C.MAGENTA, C.NEGRITO))
     separador('═', 58, C.MAGENTA)
-    total_livros = len([s for s in dados["sessoes"] if s.get("titulo_livro")])
+    total_livros = len([e for e in dados["etapas"] if e.get("titulo_livro")])
+    concluidas   = dados["etapa_atual"] - 1
     print(f"""
-  Você usou suas {cor(str(SESSOES_POR_DIA), C.AMARELO)} sessões de hoje. Incrível!
+  Você usou suas {cor(str(ETAPAS_POR_DIA), C.AMARELO)} etapas de hoje. Incrível!
 
-  📊 Hoje:  {cor('2', C.VERDE)} sessões  •  {cor(str(SESSOES_POR_DIA * SESSAO_MINUTOS), C.VERDE)} minutos  •  1 livro lido
-  📚 Total de livros na biblioteca: {cor(str(total_livros), C.AMARELO, C.NEGRITO)}
+  ✅ Progresso:  {cor(f'{concluidas}/{TOTAL_ETAPAS}', C.VERDE, C.NEGRITO)} etapas
+  📚 Biblioteca: {cor(str(total_livros), C.AMARELO, C.NEGRITO)} livro(s)
 
-  Volte amanhã para novas aventuras! 🗡️
+  Volte amanhã para continuar a jornada! 🗡️
 """)
     separador('─', 58)
+
+def tela_jornada_concluida(dados):
+    limpar()
+    separador('═', 58, C.AMARELO)
+    print(cor('  🎉🎉  JORNADA COMPLETA — VOCÊ VENCEU!  🎉🎉', C.AMARELO, C.NEGRITO))
+    separador('═', 58, C.AMARELO)
+    total_livros = len([e for e in dados["etapas"] if e.get("titulo_livro")])
+    print(f"""
+  Você concluiu as {cor(str(TOTAL_ETAPAS), C.VERDE, C.NEGRITO)} etapas da Quest Linux!
+  📚 E ainda leu {cor(str(total_livros), C.AMARELO, C.NEGRITO)} livros pelo caminho.
+
+  {cor('🎁  RECOMPENSA FINAL DESBLOQUEADA:', C.MAGENTA, C.NEGRITO)}
+
+      Agora sim — chegou a hora de {cor('JOGAR MINECRAFT COM O SEU PAI!', C.VERDE, C.NEGRITO)}
+
+      👉  Dentro do terminal, digite:  {cor('iniciar-minecraft', C.CIANO, C.NEGRITO)}
+      👉  Combine o horário com o Pai Vinny e divirtam-se juntos. 🟢
+""")
+    mostrar_biblioteca(dados)
+
+# ═══════════════════════════════════════════════════════════════
+# UMA ETAPA COMPLETA
+# ═══════════════════════════════════════════════════════════════
+
+def fazer_etapa(dados):
+    """Executa uma etapa: desafio (verificado) + leitura + resumo via portal.
+    Retorna True se concluiu, False se o filho saiu no meio."""
+    numero = dados["etapa_atual"]
+    etapa  = ETAPAS[numero - 1]
+
+    # Recupera registro incompleto desta etapa (caso tenha desconectado antes)
+    registro = next((e for e in dados["etapas"]
+                     if e.get("numero") == numero and not e.get("completa")), None)
+    if registro is None:
+        registro = {"numero": numero, "numero_do_dia": numero,
+                    "data": str(date.today()),
+                    "inicio": datetime.now().isoformat(),
+                    "completa": False, "desafio_ok": False, "resumo_enviado": False}
+        dados["etapas"].append(registro)
+        salvar_dados(dados)
+        escrever_trail(f"🏁 Iniciou a etapa {numero}: {etapa['titulo']}")
+
+    # ── Fase 1: desafio Linux (verificado) ──
+    if not registro.get("desafio_ok"):
+        tela_inicio_etapa(dados, numero, etapa)
+        while True:
+            executar_sessao_bash(SESSAO_MINUTOS, numero, registro["inicio"])
+            if verificar_missao(etapa):
+                registro["desafio_ok"] = True
+                salvar_dados(dados)
+                escrever_trail(f"✅ Desafio da etapa {numero} concluído: {etapa['titulo']}")
+                break
+            if not tela_missao_incompleta(etapa):
+                return False
+
+    # ── Fase 2: leitura + resumo pelo portal ──
+    tela_desafio_concluido(etapa)
+    temporizador_leitura(LEITURA_MINUTOS)
+    lmin = calcular_linhas_minimas(dados)
+    res  = coletar_resumo_portal(numero, lmin)
+    if res is None:
+        return False
+    titulo, resumo, n_linhas = res
+
+    registro.update({
+        "fim":           datetime.now().isoformat(),
+        "titulo_livro":  titulo,
+        "resumo":        resumo,
+        "linhas_resumo": n_linhas,
+        "resumo_enviado": True,
+        "completa":      True,
+    })
+    dados["etapa_atual"] = numero + 1
+    salvar_dados(dados)
+    escrever_trail(f"📚 Etapa {numero} concluída — livro: {titulo}")
+
+    tela_etapa_concluida(dados, numero, etapa)
+    return True
 
 # ═══════════════════════════════════════════════════════════════
 # FLUXO PRINCIPAL
@@ -497,86 +804,38 @@ def main():
     _garantir_data()
     dados = carregar_dados()
 
-    # Dicas do pai enfileiradas (aparecem uma vez ao login)
     mostrar_dicas_login()
 
-    hoje  = sessoes_hoje(dados)
-    completas = [s for s in hoje if s.get("completa")]
+    # ── Jornada já concluída? ──
+    if dados["etapa_atual"] > TOTAL_ETAPAS:
+        tela_jornada_concluida(dados)
+        print(MENSAGEM_PAI)
+        pausar()
+        sys.exit(0)
 
     # ── Limite diário ──
-    if len(completas) >= SESSOES_POR_DIA:
+    if len(etapas_completas_hoje(dados)) >= ETAPAS_POR_DIA:
         tela_limite_diario(dados)
         print(MENSAGEM_PAI)
         pausar()
         sys.exit(0)
 
-    # ── Resumo pendente de sessão anterior (desconectou no meio) ──
-    incompleta = next((s for s in hoje if not s.get("completa")), None)
-    if incompleta and not incompleta.get("resumo_enviado"):
-        limpar()
-        print(cor('\n  ⚠️   Resumo pendente da última sessão!', C.AMARELO, C.NEGRITO))
-        print('  Complete o gate de leitura para continuar.\n')
-        pausar()
-        temporizador_leitura(LEITURA_MINUTOS)
-        lmin = calcular_linhas_minimas(dados)
-        titulo, resumo, n = coletar_resumo(lmin)
-        incompleta.update({"titulo_livro": titulo, "resumo": resumo,
-                           "linhas_resumo": n, "resumo_enviado": True, "completa": True})
-        salvar_dados(dados)
-        hoje      = sessoes_hoje(dados)
-        completas = [s for s in hoje if s.get("completa")]
+    # ── Faz até ETAPAS_POR_DIA etapas neste login ──
+    while (len(etapas_completas_hoje(dados)) < ETAPAS_POR_DIA
+           and dados["etapa_atual"] <= TOTAL_ETAPAS):
+        ok = fazer_etapa(dados)
+        if not ok:
+            break
+        if (len(etapas_completas_hoje(dados)) < ETAPAS_POR_DIA
+                and dados["etapa_atual"] <= TOTAL_ETAPAS):
+            pausar(f"\n  Pressione ENTER para começar sua próxima etapa de hoje "
+                   f"({len(etapas_completas_hoje(dados)) + 1}/{ETAPAS_POR_DIA})...")
 
-    num_sessao = len(completas) + 1
-
-    # ── Inicia Sessão 1 ──
-    tela_inicio_sessao(dados, num_sessao)
-
-    inicio_iso = datetime.now().isoformat()
-    registro   = {"data": str(date.today()), "numero_do_dia": num_sessao,
-                  "inicio": inicio_iso, "completa": False, "resumo_enviado": False}
-    dados["sessoes"].append(registro)
-    salvar_dados(dados)
-
-    motivo = executar_sessao_bash(SESSAO_MINUTOS, num_sessao, inicio_iso)
-    registro["fim"] = datetime.now().isoformat()
-    salvar_dados(dados)
-
-    # ── Gate: leitura + resumo ──
-    if num_sessao < SESSOES_POR_DIA:
-        tela_sessao_encerrada(motivo)
-        print(MENSAGEM_PAI)
-        pausar("  Pressione ENTER para iniciar o cronômetro de leitura...")
-
-        temporizador_leitura(LEITURA_MINUTOS)
-
-        lmin = calcular_linhas_minimas(dados)
-        titulo, resumo, n_linhas = coletar_resumo(lmin)
-        registro.update({"titulo_livro": titulo, "resumo": resumo,
-                         "linhas_resumo": n_linhas, "resumo_enviado": True, "completa": True})
-        salvar_dados(dados)
-
-        limpar()
-        print(f"\n{cor('  📚 Livro adicionado à sua biblioteca!', C.VERDE, C.NEGRITO)}\n")
-        mostrar_biblioteca(dados)
-        pausar(f"\n  Pressione ENTER para iniciar a sessão {num_sessao + 1} de {SESSAO_MINUTOS} min...")
-
-        # ── Sessão 2 ──
-        tela_inicio_sessao(dados, num_sessao + 1)
-        inicio2 = datetime.now().isoformat()
-        r2 = {"data": str(date.today()), "numero_do_dia": num_sessao + 1,
-              "inicio": inicio2, "completa": False, "resumo_enviado": True}
-        dados["sessoes"].append(r2)
-        salvar_dados(dados)
-
-        executar_sessao_bash(SESSAO_MINUTOS, num_sessao + 1, inicio2)
-        r2.update({"fim": datetime.now().isoformat(), "completa": True})
-        salvar_dados(dados)
+    # ── Encerramento ──
+    if dados["etapa_atual"] > TOTAL_ETAPAS:
+        tela_jornada_concluida(dados)
     else:
-        registro.update({"completa": True})
-        salvar_dados(dados)
-
-    # ── Fim do dia ──
-    tela_limite_diario(dados)
+        tela_limite_diario(dados)
     print(MENSAGEM_PAI)
     pausar()
 

@@ -24,39 +24,53 @@ build the minecraft container (root context). `portal/` and `landing/` each have
 `Dockerfile` and build context.
 
 **`sessao.py`** — runs inside the child's (minecraft) container as the SSH login shell
-(set via `usermod -s /opt/sessao.py jogador` in the Dockerfile).
-- `main()` is the gate state machine: enforces `SESSOES_POR_DIA` (2) sessions/day, each
-  `SESSAO_MINUTOS` (30) min. Between sessions the child must complete `temporizador_leitura`
-  (reading timer) + `coletar_resumo` (line-validated book summary).
-- Required summary length grows over time: `calcular_linhas_minimas` adds `CICLO_INCREMENTO`
-  lines every `CICLO_DIAS` days since `inicio`.
-- `executar_sessao_bash` spawns `bash -i` with two timer threads (5-min warning, hard
-  `terminate()`) plus background threads that write a heartbeat and poll for parent messages.
+(set via `usermod -s /opt/sessao.py jogador` in the Dockerfile). v1.1 model: a journey of
+`TOTAL_ETAPAS` (20) **etapas**, max `ETAPAS_POR_DIA` (2) per day.
+- `ETAPAS` (top of file) is the list of 20 progressive Linux missions. Each has a `missao`,
+  `dica`, a `verificar` shell command (run as the child via `verificar_missao`), and a `teaser`.
+- `fazer_etapa()` runs one etapa: **(1) challenge** — `executar_sessao_bash` (timed `bash -i`,
+  5-min warning + hard `terminate()`, heartbeat + parent-message threads), then loops on
+  `verificar_missao` until the mission is actually done; **(2) reading gate** —
+  `temporizador_leitura`; **(3) summary** — `coletar_resumo_portal` (see below). Then reveals
+  the next etapa. `registro['desafio_ok']` lets a disconnected etapa resume mid-way.
+- `coletar_resumo_portal` writes `resumo_pendente.json` with a random token, shows the child a
+  `https://<ADMIN_DOMAIN>/resumo?t=<token>` link, and **polls** `resumo_enviado.json` until the
+  portal receives the summary (Ctrl+C aborts; the etapa stays resumable). Summary is no longer
+  typed in the terminal.
+- Required summary length grows over time: `calcular_linhas_minimas` (LINHAS_BASE + cycles).
+- `iniciar-minecraft.sh` is the **reward**: it reads `etapa_atual` from `historico.json` and
+  refuses to launch the Paper server until all 20 etapas are done (the only place that promises
+  "play with dad").
 - `sys.argv[1] == '-c'` short-circuits to plain bash so scp/rsync/non-interactive SSH still work.
-- Tuning constants live at the top of the file (session/reading minutes, sessions per day,
-  summary growth curve).
+- Data migration: `carregar_dados` upgrades the v1.0 `sessoes` shape to `etapas` + `etapa_atual`.
 
-**`portal/portal.py`** — FastAPI dashboard backend in the portal container; serves `portal.html`.
-- Read-only view of `/data`: `get_estado()` aggregates today/total stats; `/api/stream` is
-  an SSE endpoint polling every 4s.
-- Writes back only to push parent → child communication (`/api/dica`).
-- Password auth via the `senha` query param checked against `PORTAL_SENHA` env var.
+**`portal/portal.py`** — FastAPI backend in the portal container; serves `portal.html`.
+- Read-only dashboard of `/data`: `get_estado()` aggregates etapa/book stats (`_etapas()`
+  handles both `etapas` and legacy `sessoes`); `/api/stream` is an SSE endpoint (4s).
+- Parent → child messaging via `/api/dica` (password-protected by `senha` query param).
+- **Child summary flow (token-auth, no parent password):** `GET /resumo?t=<token>` serves a
+  mobile form (`_RESUMO_HTML`); `POST /api/resumo-enviar` validates the token against
+  `resumo_pendente.json` + line rules, then writes `resumo_enviado.json`.
 
 ### The `/data` file contract (the real interface between the two processes)
 
 | File | Writer | Reader | Purpose |
 |------|--------|--------|---------|
-| `historico.json` | sessao | both | start date + all session records (the source of truth) |
+| `historico.json` | sessao | both | `inicio`, `etapa_atual`, and the `etapas` list (source of truth) |
 | `online.json` | sessao | portal | heartbeat; portal treats it stale after 90s (`ler_online`) |
 | `dicas.json` | portal | sessao | queued login messages; child marks `mostrada: true` after showing |
 | `mensagem.txt` | portal | sessao | one real-time message; child writes it to the bash tty then blanks the file |
-| `trail.log` | (external) | portal | activity log shown in dashboard |
+| `resumo_pendente.json` | sessao | portal | open summary request: `token`, `etapa`, `linhas_minimas` |
+| `resumo_enviado.json` | portal | sessao | summary the child submitted; sessao consumes + deletes it |
+| `trail.log` | sessao | portal | activity log shown in the dashboard (`escrever_trail`) |
 
 Real-time messaging works by `sessao.py` writing directly to `/proc/<bash_pid>/fd/1` — the
 child's live terminal. This is Linux-specific and depends on the spawned bash PID.
 
-When changing any data field, update **both** files — they share these JSON shapes with no
-schema enforcement.
+The summary handshake is a file-based request/response over `/data`: sessao writes
+`resumo_pendente.json` (with a token) → child submits on the portal → portal writes
+`resumo_enviado.json` → sessao polls, matches the token, and continues. When changing a field,
+update both `sessao.py` and `portal/portal.py` (shared JSON shapes, no schema enforcement).
 
 ## Commands
 
@@ -67,8 +81,8 @@ docker compose logs -f         # tail logs
 docker compose down            # stop
 ```
 
-Connect as the child: `ssh jogador@<host> -p 2222`. Inside the session, run
-`iniciar-minecraft` to start the Paper server (manual start, by design).
+Connect as the child: `ssh jogador@<host> -p 2222` (drops into the etapa flow).
+`iniciar-minecraft` starts the Paper server but is **locked until all 20 etapas are done**.
 Portal: `https://<ADMIN_DOMAIN>/?senha=<PORTAL_SENHA>`. Landing: `https://<LANDING_DOMAIN>`.
 
 There are no tests, linter, or build step beyond Docker.
