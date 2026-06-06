@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minecraft Quest — Pai Vinny</title>
+  <style>
+    :root {
+      --verde: #4ade80;
+      --roxo: #a78bfa;
+      --bg: #0f1117;
+      --card: #171a23;
+      --txt: #e6e8ee;
+      --dim: #9aa3b2;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: ui-monospace, "SFMono-Regular", "Cascadia Code", Menlo, monospace;
+      background: radial-gradient(1200px 600px at 50% -10%, #1b2030, var(--bg));
+      color: var(--txt);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .wrap { max-width: 760px; width: 100%; }
+    .hero { text-align: center; margin-bottom: 40px; }
+    .badge {
+      display: inline-block;
+      font-size: 13px;
+      color: var(--verde);
+      border: 1px solid #2a3346;
+      border-radius: 999px;
+      padding: 6px 14px;
+      margin-bottom: 20px;
+      letter-spacing: 1px;
+    }
+    h1 {
+      font-size: clamp(28px, 6vw, 44px);
+      line-height: 1.1;
+      margin-bottom: 14px;
+    }
+    h1 .pico { color: var(--verde); }
+    h1 .pai { color: var(--roxo); }
+    .sub { color: var(--dim); font-size: 16px; max-width: 540px; margin: 0 auto; }
+    .grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+    @media (min-width: 620px) { .grid { grid-template-columns: 1fr 1fr; } }
+    .card {
+      background: var(--card);
+      border: 1px solid #232838;
+      border-radius: 14px;
+      padding: 22px;
+    }
+    .card h2 { font-size: 16px; margin-bottom: 12px; color: var(--verde); }
+    .card.roxo h2 { color: var(--roxo); }
+    .card p, .card li { color: var(--dim); font-size: 14px; line-height: 1.7; }
+    .card ol { padding-left: 18px; }
+    code {
+      display: block;
+      background: #0b0d13;
+      border: 1px solid #232838;
+      border-radius: 8px;
+      padding: 12px 14px;
+      color: var(--verde);
+      font-size: 14px;
+      margin: 12px 0 4px;
+      overflow-x: auto;
+    }
+    .btn {
+      display: inline-block;
+      margin-top: 12px;
+      background: var(--roxo);
+      color: #14101f;
+      text-decoration: none;
+      font-weight: 700;
+      padding: 10px 18px;
+      border-radius: 10px;
+    }
+    footer { text-align: center; color: var(--dim); font-size: 13px; margin-top: 36px; }
+    footer .heart { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <span class="badge">⚔ MINECRAFT QUEST</span>
+      <h1><span class="pico">Aprenda Linux.</span><br /><span class="pai">Ganhe Minecraft.</span></h1>
+      <p class="sub">
+        Um ambiente onde cada sessão de terminal é conquistada com leitura.
+        Leia um livro, escreva o resumo e desbloqueie seu tempo de exploração.
+      </p>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>🚀 Como acessar</h2>
+        <p>No seu computador ou celular (app de SSH), conecte:</p>
+        <code>ssh jogador@SEU-IP -p 2222</code>
+        <p>Use a senha combinada com o Pai Vinny. Você vai cair direto na sua aventura.</p>
+      </div>
+
+      <div class="card">
+        <h2>🎮 Como funciona</h2>
+        <ol>
+          <li>Explore o terminal Linux por 30 minutos.</li>
+          <li>Leia um livro por 30 minutos.</li>
+          <li>Escreva um resumo do que aprendeu.</li>
+          <li>Desbloqueie a próxima sessão!</li>
+        </ol>
+      </div>
+
+      <div class="card">
+        <h2>🟢 Jogar Minecraft</h2>
+        <p>Dentro da sessão, suba o servidor quando quiser jogar:</p>
+        <code>iniciar-minecraft</code>
+        <p>Depois conecte o cliente do jogo em <strong>SEU-IP:25565</strong>.</p>
+      </div>
+
+      <div class="card roxo">
+        <h2>💌 Painel do Pai</h2>
+        <p>Acompanhe o progresso, a biblioteca de livros e envie mensagens em tempo real.</p>
+        <a class="btn" href="https://adminvgtux.vsanexus.com">Abrir painel admin</a>
+      </div>
+    </div>
+
+    <footer>
+      Feito com <span class="heart">❤</span> pelo Pai Vinny — para quem aprende todos os dias.
+    </footer>
+  </div>
+</body>
+</html>

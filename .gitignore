@@ -1,0 +1,14 @@
+# Segredos / ambiente
+.env
+
+# Dados de runtime (volume /data)
+data/
+*.log
+
+# Mundo Minecraft local
+world/
+minecraft/world/
+
+# Python
+__pycache__/
+*.pyc

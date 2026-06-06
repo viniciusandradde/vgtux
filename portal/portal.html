@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Portal do Pai Vinny ⚔</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Cinzel+Decorative:wght@700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0e0b07;--bg2:#181209;--bg3:#221a0c;--bg4:#2d2210;
+  --border:#3d3010;--gold:#c9a027;--gold2:#8a6c12;--gold-dim:#4a3c0e;
+  --text:#e8d5b7;--text-dim:#7a6a50;--text-muted:#504030;
+  --green:#52c41a;--green-dim:#2a6010;
+  --red:#e05555;--amber:#f09030;
+  --mono:'JetBrains Mono',monospace;
+  --serif:'Cinzel',serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;min-height:100vh}
+a{color:var(--gold);text-decoration:none}
+
+/* ── MODAL ─────────────────────────────────────────────── */
+#modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;z-index:100}
+.modal-box{background:var(--bg2);border:1px solid var(--gold2);padding:2rem;width:320px;text-align:center;border-radius:4px}
+.modal-box h1{font-family:'Cinzel Decorative',serif;color:var(--gold);font-size:1.1rem;margin-bottom:.4rem}
+.modal-box p{color:var(--text-dim);font-size:.75rem;margin-bottom:1.4rem}
+.modal-box input{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:.6rem .8rem;font-family:var(--mono);font-size:.9rem;border-radius:3px;outline:none;margin-bottom:1rem}
+.modal-box input:focus{border-color:var(--gold2)}
+.btn-primary{width:100%;background:var(--gold2);color:var(--text);border:none;padding:.65rem;font-family:var(--serif);font-size:.85rem;letter-spacing:.08em;cursor:pointer;border-radius:3px;transition:.2s}
+.btn-primary:hover{background:var(--gold);color:var(--bg)}
+
+/* ── LAYOUT ─────────────────────────────────────────────── */
+#app{display:none;max-width:960px;margin:0 auto;padding:1rem}
+
+/* ── HEADER ─────────────────────────────────────────────── */
+header{display:flex;align-items:center;justify-content:space-between;padding:.8rem 1rem;background:var(--bg2);border:1px solid var(--border);border-radius:4px;margin-bottom:1rem;gap:1rem;flex-wrap:wrap}
+header h1{font-family:'Cinzel Decorative',serif;color:var(--gold);font-size:.95rem;white-space:nowrap}
+#status-bar{display:flex;align-items:center;gap:.6rem;font-size:.75rem}
+.dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;transition:.3s}
+.dot.online{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 1.6s infinite}
+.dot.offline{background:var(--text-muted)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+#status-text{color:var(--text-dim);font-size:.75rem}
+#timer-wrap{display:flex;align-items:center;gap:.5rem}
+#timer-display{color:var(--amber);font-weight:700;font-size:.75rem;min-width:100px}
+#timer-bar-bg{width:100px;height:4px;background:var(--bg4);border-radius:2px;overflow:hidden}
+#timer-bar{height:100%;background:var(--amber);width:0%;transition:width 1s linear}
+
+/* ── GRID STATS ─────────────────────────────────────────── */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.6rem;margin-bottom:1rem}
+.stat-card{background:var(--bg2);border:1px solid var(--border);padding:.8rem 1rem;border-radius:3px;text-align:center}
+.stat-card .val{font-family:var(--serif);font-size:1.6rem;color:var(--gold);line-height:1}
+.stat-card .lbl{color:var(--text-dim);font-size:.7rem;margin-top:.25rem}
+.stat-card .sub{color:var(--text-muted);font-size:.65rem}
+
+/* ── CARDS ──────────────────────────────────────────────── */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:4px;margin-bottom:.8rem;overflow:hidden}
+.card-header{display:flex;align-items:center;justify-content:space-between;padding:.65rem 1rem;background:var(--bg3);border-bottom:1px solid var(--border);cursor:pointer;user-select:none}
+.card-header h2{font-family:var(--serif);font-size:.8rem;color:var(--gold);letter-spacing:.05em}
+.card-header .badge{background:var(--gold2);color:var(--text);font-size:.65rem;padding:.15rem .45rem;border-radius:10px}
+.card-body{padding:.8rem 1rem}
+.toggle-icon{color:var(--text-dim);font-size:.7rem;transition:.2s}
+.card.collapsed .card-body{display:none}
+.card.collapsed .toggle-icon{transform:rotate(-90deg)}
+
+/* ── ENVIAR MENSAGEM ────────────────────────────────────── */
+.tipo-tabs{display:flex;gap:.4rem;margin-bottom:.7rem}
+.tipo-tab{flex:1;padding:.45rem;border:1px solid var(--border);background:var(--bg3);color:var(--text-dim);font-family:var(--mono);font-size:.75rem;cursor:pointer;border-radius:3px;text-align:center;transition:.2s}
+.tipo-tab.active{border-color:var(--gold);color:var(--gold);background:var(--gold-dim)}
+textarea#msg-texto{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:.6rem;font-family:var(--mono);font-size:.8rem;resize:vertical;min-height:70px;border-radius:3px;outline:none;margin-bottom:.6rem}
+textarea#msg-texto:focus{border-color:var(--gold2)}
+select#dicas-rapidas{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text-dim);padding:.5rem;font-family:var(--mono);font-size:.75rem;margin-bottom:.6rem;border-radius:3px;outline:none}
+select#dicas-rapidas option{background:var(--bg3)}
+.btn-send{background:var(--green-dim);color:var(--text);border:1px solid var(--green-dim);padding:.55rem 1.2rem;font-family:var(--serif);font-size:.8rem;letter-spacing:.06em;cursor:pointer;border-radius:3px;transition:.2s}
+.btn-send:hover{background:var(--green);color:#000}
+.btn-send:disabled{opacity:.4;cursor:not-allowed}
+#send-feedback{margin-top:.5rem;font-size:.75rem;color:var(--green);min-height:1.2em}
+
+/* ── TRAIL ──────────────────────────────────────────────── */
+#trail-log{max-height:180px;overflow-y:auto;font-family:var(--mono);font-size:.75rem;line-height:1.7;padding:.2rem 0}
+.trail-line{color:var(--text-dim);padding:.1rem 0;border-bottom:1px solid var(--bg4)}
+.trail-line .hl{color:var(--gold)}
+.trail-line .cmd{color:var(--amber)}
+.trail-line:first-child{color:var(--text)}
+
+/* ── HISTÓRICO ──────────────────────────────────────────── */
+.sessao-card{border:1px solid var(--border);border-radius:3px;margin-bottom:.5rem;overflow:hidden}
+.sessao-head{display:flex;align-items:center;gap:.6rem;padding:.5rem .8rem;background:var(--bg3);flex-wrap:wrap}
+.s-num{font-family:var(--serif);color:var(--gold);font-size:.75rem;white-space:nowrap}
+.s-data{color:var(--text-dim);font-size:.7rem;flex:1}
+.s-badge{font-size:.65rem;padding:.15rem .4rem;border-radius:10px}
+.s-badge.c{background:var(--green-dim);color:var(--green)}
+.s-badge.i{background:var(--bg4);color:var(--text-muted)}
+.sessao-body{padding:.5rem .8rem;background:var(--bg2)}
+.livro-row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.3rem}
+.livro-titulo{color:var(--text);font-size:.8rem}
+.livro-linhas{color:var(--text-dim);font-size:.7rem}
+.btn-resumo{background:none;border:1px solid var(--border);color:var(--gold2);font-family:var(--mono);font-size:.7rem;padding:.2rem .5rem;cursor:pointer;border-radius:2px;transition:.2s}
+.btn-resumo:hover{border-color:var(--gold);color:var(--gold)}
+.resumo-box{display:none;margin-top:.5rem;background:var(--bg4);border:1px solid var(--border);padding:.6rem;border-radius:3px}
+.resumo-box pre{font-family:var(--mono);font-size:.72rem;color:var(--text-dim);white-space:pre-wrap;line-height:1.6}
+.sem-sessoes{color:var(--text-muted);font-size:.8rem;padding:.5rem 0}
+
+/* ── TOAST ──────────────────────────────────────────────── */
+#toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--green-dim);border:1px solid var(--green);color:var(--text);padding:.6rem 1rem;border-radius:4px;font-size:.8rem;opacity:0;transition:opacity .3s;pointer-events:none}
+#toast.show{opacity:1}
+
+/* ── SCROLLBAR ──────────────────────────────────────────── */
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+@media(max-width:500px){
+  header h1{font-size:.8rem}
+  .stat-card .val{font-size:1.2rem}
+  #timer-bar-bg{width:70px}
+}
+</style>
+</head>
+<body>
+
+<!-- ── MODAL LOGIN ─────────────────────────────────────── -->
+<div id="modal">
+  <div class="modal-box">
+    <h1>⚔ Portal do Pai Vinny</h1>
+    <p>Minecraft Quest — Painel de Acompanhamento</p>
+    <input type="password" id="senha-input" placeholder="senha do portal" autofocus>
+    <button class="btn-primary" onclick="fazerLogin()">Entrar no Portal</button>
+  </div>
+</div>
+
+<!-- ── APP ────────────────────────────────────────────── -->
+<div id="app">
+
+  <!-- HEADER -->
+  <header>
+    <h1>⚔ Portal do Pai Vinny</h1>
+    <div id="status-bar">
+      <div class="dot offline" id="status-dot"></div>
+      <span id="status-text">Verificando...</span>
+      <div id="timer-wrap" style="display:none">
+        <span id="timer-display"></span>
+        <div id="timer-bar-bg"><div id="timer-bar"></div></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- STATS -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="val" id="sessoes-hoje">–</div>
+      <div class="lbl">Sessões hoje</div><div class="sub">máx. 2</div>
+    </div>
+    <div class="stat-card">
+      <div class="val" id="total-livros">–</div>
+      <div class="lbl">Livros lidos</div><div class="sub">total</div>
+    </div>
+    <div class="stat-card">
+      <div class="val" id="total-sessoes">–</div>
+      <div class="lbl">Sessões total</div><div class="sub">desde o início</div>
+    </div>
+    <div class="stat-card">
+      <div class="val" id="dias-ativos">–</div>
+      <div class="lbl">Dias no projeto</div><div class="sub">&nbsp;</div>
+    </div>
+  </div>
+
+  <!-- ENVIAR MENSAGEM -->
+  <div class="card">
+    <div class="card-header" onclick="toggleCard(this)">
+      <h2>💬 Enviar Mensagem ao Filho</h2>
+      <span class="toggle-icon">▼</span>
+    </div>
+    <div class="card-body">
+      <div class="tipo-tabs">
+        <div class="tipo-tab active" id="tab-login" onclick="selecionarTipo('login')">📩 No login</div>
+        <div class="tipo-tab" id="tab-realtime" onclick="selecionarTipo('realtime')">⚡ Agora (tempo real)</div>
+      </div>
+      <div style="font-size:.7rem;color:var(--text-muted);margin-bottom:.6rem" id="tipo-desc">
+        A mensagem aparece quando ele fizer login na próxima vez.
+      </div>
+      <select id="dicas-rapidas" onchange="preencherDica()">
+        <option value="">— Dicas rápidas por missão —</option>
+      </select>
+      <textarea id="msg-texto" placeholder="Escreva sua mensagem ou dica..."></textarea>
+      <div style="display:flex;align-items:center;gap:.8rem">
+        <button class="btn-send" id="btn-enviar" onclick="enviarMensagem()">⚔ Enviar</button>
+        <span id="send-feedback"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRILHA DE MISSÕES -->
+  <div class="card">
+    <div class="card-header" onclick="toggleCard(this)">
+      <h2>🗺 Trilha de Missões</h2>
+      <span class="badge" id="badge-trail">0</span>
+      <span class="toggle-icon">▼</span>
+    </div>
+    <div class="card-body">
+      <div style="font-size:.7rem;color:var(--text-muted);margin-bottom:.5rem">
+        Arquivos que o filho leu — mostra em qual missão ele está.
+      </div>
+      <div id="trail-log"><span style="color:var(--text-muted)">Nenhuma atividade ainda...</span></div>
+    </div>
+  </div>
+
+  <!-- HISTÓRICO -->
+  <div class="card">
+    <div class="card-header" onclick="toggleCard(this)">
+      <h2>📚 Histórico de Sessões e Livros</h2>
+      <span class="toggle-icon">▼</span>
+    </div>
+    <div class="card-body">
+      <div id="historico"><p class="sem-sessoes">Nenhuma sessão ainda.</p></div>
+    </div>
+  </div>
+
+</div><!-- /#app -->
+
+<div id="toast"></div>
+
+<script>
+// ── Estado ──────────────────────────────────────────────────
+let senha = '', tipoMensagem = 'login', sseSource = null;
+let timerInterval = null, timerRestante = 0;
+
+// ── Dicas rápidas pré-fabricadas ────────────────────────────
+const DICAS = {
+  "🏁 Início": [
+    "Oi! Use 'ls' para ver o que tem aqui, e 'cat README.md' para ler!",
+    "Dica: Tab completa os nomes de arquivos. Tente digitar mis e pressionar Tab!",
+    "Se travar, Ctrl+C cancela o que está rodando.",
+  ],
+  "📁 Missão 1 — Navegação": [
+    "Use 'pwd' para saber exatamente onde você está no sistema!",
+    "Para voltar uma pasta: cd ..",
+    "ls -la mostra arquivos ocultos e detalhes de permissões!",
+  ],
+  "📄 Missão 2 — cat": [
+    "O arquivo segredo.txt está na pasta missao2. Use: cat segredo.txt",
+    "Dica: cat pode ler qualquer arquivo de texto. O 'cat' vem de 'concatenate'!",
+  ],
+  "✍️ Missão 3 — echo": [
+    "echo 'PRONTO' > confirmacao.txt  — cria o arquivo com esse texto!",
+    "Depois use cat confirmacao.txt para verificar que funcionou.",
+    "O sinal >> adiciona ao final do arquivo sem apagar o que já tinha!",
+  ],
+  "🔍 Missão 4 — grep/find": [
+    "Tente: grep 'minecraft' logs/sistema.log — e veja o que aparece!",
+    "find /home -name '*.sh' encontra todos os scripts da pasta home!",
+    "grep -i busca sem diferenciar maiúsculas de minúsculas.",
+  ],
+  "🏆 Missão Final — chmod": [
+    "Olha as permissões com: ls -la start.sh",
+    "chmod +x start.sh dá permissão de execução ao script!",
+    "Depois: ./start.sh  (o ./ diz para rodar nesta pasta)",
+    "Para o servidor não parar: screen -S mc → ./start.sh → Ctrl+A depois D",
+  ],
+  "💬 Motivação": [
+    "Estou te acompanhando aqui! Vai com tudo! 🔥",
+    "Orgulho enorme de você! Continue explorando! ⚔️",
+    "Cada comando que você aprende hoje, você vai usar para sempre! 🌟",
+    "Não desista! Você está quase lá! Acredito em você! 💪",
+    "Quando terminar, a gente joga junto! Te amo! — Pai Vinny ❤️",
+  ]
+};
+
+function preencherSelectDicas() {
+  const sel = document.getElementById('dicas-rapidas');
+  sel.innerHTML = '<option value="">— Dicas rápidas por missão —</option>';
+  for (const [grupo, items] of Object.entries(DICAS)) {
+    const grp = document.createElement('optgroup');
+    grp.label = grupo;
+    items.forEach((txt, i) => {
+      const opt = document.createElement('option');
+      opt.value = txt;
+      opt.textContent = txt.length > 60 ? txt.slice(0, 57) + '…' : txt;
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  }
+}
+
+function preencherDica() {
+  const v = document.getElementById('dicas-rapidas').value;
+  if (v) document.getElementById('msg-texto').value = v;
+}
+
+// ── Login ────────────────────────────────────────────────────
+function fazerLogin() {
+  senha = document.getElementById('senha-input').value.trim();
+  if (!senha) return;
+  fetch(`/api/estado?senha=${encodeURIComponent(senha)}`)
+    .then(r => {
+      if (r.status === 401) { alert('Senha inválida!'); return null; }
+      return r.json();
+    })
+    .then(data => {
+      if (!data) return;
+      document.getElementById('modal').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      preencherSelectDicas();
+      renderEstado(data);
+      conectarSSE();
+    });
+}
+
+document.getElementById('senha-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') fazerLogin();
+});
+
+// ── SSE ──────────────────────────────────────────────────────
+function conectarSSE() {
+  if (sseSource) sseSource.close();
+  sseSource = new EventSource(`/api/stream?senha=${encodeURIComponent(senha)}`);
+  sseSource.onmessage = e => {
+    try { renderEstado(JSON.parse(e.data)); } catch(_) {}
+  };
+  sseSource.onerror = () => { setTimeout(conectarSSE, 5000); };
+}
+
+// ── Render ───────────────────────────────────────────────────
+function renderEstado(e) {
+  // Status
+  const online = e.online?.ativo;
+  document.getElementById('status-dot').className = 'dot ' + (online ? 'online' : 'offline');
+  document.getElementById('status-text').textContent = online
+    ? `Filho online — sessão ${e.online.sessao}/2`
+    : 'Filho offline';
+
+  // Timer
+  const tw = document.getElementById('timer-wrap');
+  if (online && e.online.timer) {
+    tw.style.display = 'flex';
+    timerRestante = e.online.timer.restante;
+    const pct = Math.min(100, (e.online.timer.elapsed / 1800) * 100);
+    document.getElementById('timer-bar').style.width = pct + '%';
+    atualizarTimerDisplay();
+    if (!timerInterval) {
+      timerInterval = setInterval(() => {
+        if (timerRestante > 0) { timerRestante--; atualizarTimerDisplay(); }
+        else { clearInterval(timerInterval); timerInterval = null; }
+      }, 1000);
+    }
+  } else {
+    tw.style.display = 'none';
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    document.getElementById('timer-bar').style.width = '0%';
+  }
+
+  // Stats
+  document.getElementById('sessoes-hoje').textContent =
+    (e.hoje.sessoes_usadas || 0) + '/2';
+  document.getElementById('total-livros').textContent  = e.total.livros  || 0;
+  document.getElementById('total-sessoes').textContent = e.total.sessoes || 0;
+  document.getElementById('dias-ativos').textContent   = e.total.dias    || 0;
+
+  // Trail
+  renderTrail(e.trail || []);
+
+  // Histórico
+  renderHistorico(e.historico || []);
+
+  // Badge dicas
+  if ((e.dicas_pendentes || 0) > 0) {
+    document.getElementById('send-feedback').textContent =
+      `⏳ ${e.dicas_pendentes} dica(s) aguardando leitura`;
+  }
+}
+
+function atualizarTimerDisplay() {
+  const m = Math.floor(timerRestante / 60);
+  const s = String(timerRestante % 60).padStart(2, '0');
+  document.getElementById('timer-display').textContent = `${m}m ${s}s restantes`;
+}
+
+function renderTrail(trail) {
+  const el = document.getElementById('trail-log');
+  document.getElementById('badge-trail').textContent = trail.length;
+  if (!trail.length) {
+    el.innerHTML = '<span style="color:var(--text-muted)">Nenhuma atividade ainda...</span>';
+    return;
+  }
+  el.innerHTML = [...trail].reverse().map((l, i) => {
+    const hl = l
+      .replace(/missao\d+|minecraft/gi, m => `<span class="hl">${m}</span>`)
+      .replace(/\b(cat|ls|cd|find|grep|chmod|echo)\b/g, m => `<span class="cmd">${m}</span>`);
+    return `<div class="trail-line">${hl}</div>`;
+  }).join('');
+}
+
+function renderHistorico(sessoes) {
+  const el = document.getElementById('historico');
+  if (!sessoes.length) {
+    el.innerHTML = '<p class="sem-sessoes">Nenhuma sessão ainda.</p>';
+    return;
+  }
+  el.innerHTML = sessoes.map((s, i) => {
+    const livroHtml = s.titulo_livro ? `
+      <div class="livro-row">
+        <span>📖</span>
+        <span class="livro-titulo">${s.titulo_livro}</span>
+        <span class="livro-linhas">(${s.linhas_resumo || '?'} linhas)</span>
+        <button class="btn-resumo" onclick="toggleResumo(${i})">ver resumo</button>
+      </div>
+      <div class="resumo-box" id="r${i}">
+        <pre>${(s.resumo || '').replace(/</g,'&lt;')}</pre>
+      </div>` : '';
+    return `<div class="sessao-card">
+      <div class="sessao-head">
+        <span class="s-num">Sessão ${s.numero_do_dia || '?'}/2</span>
+        <span class="s-data">${s.data || ''}</span>
+        <span class="s-badge ${s.completa ? 'c' : 'i'}">${s.completa ? '✔ completa' : '⏳ incompleta'}</span>
+      </div>
+      ${livroHtml ? `<div class="sessao-body">${livroHtml}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function toggleResumo(i) {
+  const el = document.getElementById('r' + i);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+// ── Tipo de mensagem ────────────────────────────────────────
+function selecionarTipo(tipo) {
+  tipoMensagem = tipo;
+  document.getElementById('tab-login').classList.toggle('active', tipo === 'login');
+  document.getElementById('tab-realtime').classList.toggle('active', tipo === 'realtime');
+  document.getElementById('tipo-desc').textContent = tipo === 'login'
+    ? 'A mensagem aparece quando ele fizer login na próxima vez.'
+    : '⚡ A mensagem aparece IMEDIATAMENTE no terminal dele!';
+}
+
+// ── Enviar mensagem ─────────────────────────────────────────
+function enviarMensagem() {
+  const texto = document.getElementById('msg-texto').value.trim();
+  if (!texto) { mostrarFeedback('⚠️ Escreva uma mensagem!', false); return; }
+  const btn = document.getElementById('btn-enviar');
+  btn.disabled = true;
+  fetch(`/api/dica?senha=${encodeURIComponent(senha)}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({texto, tipo: tipoMensagem})
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      const msg = tipoMensagem === 'realtime'
+        ? '⚡ Enviado! Aparecerá no terminal em até 5s.'
+        : '📩 Guardado! Aparecerá no próximo login.';
+      mostrarFeedback(msg, true);
+      document.getElementById('msg-texto').value = '';
+      document.getElementById('dicas-rapidas').value = '';
+      mostrarToast(msg);
+    }
+  })
+  .catch(() => mostrarFeedback('❌ Erro ao enviar', false))
+  .finally(() => { btn.disabled = false; });
+}
+
+function mostrarFeedback(msg, ok) {
+  const el = document.getElementById('send-feedback');
+  el.textContent = msg;
+  el.style.color = ok ? 'var(--green)' : 'var(--red)';
+  setTimeout(() => { el.textContent = ''; }, 4000);
+}
+
+function mostrarToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ── Collapse cards ─────────────────────────────────────────
+function toggleCard(header) {
+  header.parentElement.classList.toggle('collapsed');
+}
+</script>
+</body>
+</html>
