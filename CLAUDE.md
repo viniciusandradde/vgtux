@@ -110,3 +110,27 @@ Target host runs Dokploy with Traefik as the reverse proxy. Constraints baked in
 When changing journey timing set `SESSAO_MINUTOS` / `LEITURA_MINUTOS` / `ETAPAS_POR_DIA` — they
 reach `sessao.py` via `/etc/environment` (written by the entrypoint) and the `portal` via its
 own env, so terminal and dashboard stay in sync.
+
+## Security / isolation
+
+The web terminal is an internet-exposed real shell, so `minecraft-quest` is **a hardened,
+isolated container — never the host**. What enforces that (in `docker-compose.yml`):
+- The child runs as **non-root `jogador`** (`su - jogador`); no `sudo`. Verified: the child
+  shell has **`CapEff=0`** (zero effective capabilities).
+- `security_opt: no-new-privileges` — blocks privilege escalation via setuid (su/sudo).
+- `cap_drop: ALL` + a minimal `cap_add` (only what `su`/PAM + the entrypoint `chown` need:
+  CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, SETPCAP, AUDIT_WRITE).
+- `pids_limit: 200` (anti fork-bomb), `cpus`/`mem_limit` caps.
+- **No** host bind mounts (named volumes only), **no** `privileged`, **no** `docker.sock`,
+  **no** `network_mode/pid: host`. Admin access is `docker exec` from the host only.
+
+**Residual risks (known, not fully solvable in compose):**
+- `minecraft-quest` shares `dokploy-network` with other Dokploy services (Traefik needs it), so
+  it could reach them over the network. Mitigation would need a dedicated Traefik↔quest network,
+  host firewall, or a Traefik allowlist.
+- The container has outbound internet; locking egress needs host firewall/network policy.
+- Containers share the host kernel — keep the host patched.
+- The terminal is Basic Auth on the internet — use a strong `JOGADOR_SENHA`; consider a Traefik
+  rate-limit/IP-allowlist middleware.
+Further hardening left as follow-up: read-only rootfs + tmpfs, running ttyd as non-root (gosu),
+and egress lockdown.

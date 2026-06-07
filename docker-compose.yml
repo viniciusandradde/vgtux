@@ -42,10 +42,27 @@ services:
       # Estado compartilhado com o portal (progresso, resumos, heartbeat)
       - sessao-data:/data
 
+    # Só a rede do Dokploy (Traefik). NÃO fica na rede 'default' — o portal
+    # troca estado com a quest pelo volume /data, não pela rede.
     networks:
-      - default
       - dokploy-network
 
+    # ── Endurecimento / isolamento (defense-in-depth) ──────────
+    # O filho já é não-root (su - jogador). Aqui reduzimos o blast radius:
+    security_opt:
+      - "no-new-privileges:true"   # bloqueia escalonamento via setuid (su/sudo) pelo filho
+    cap_drop:
+      - ALL                        # remove todas as capabilities...
+    cap_add:                       # ...e devolve só o mínimo p/ su/login/PAM + chown do entrypoint
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+      - SETPCAP
+      - AUDIT_WRITE
+    pids_limit: 200                # barra fork-bomb
+    cpus: "1.5"                    # limite de CPU
     mem_limit: ${CONTAINER_MEMORY:-1500m}
     mem_reservation: 512m
 

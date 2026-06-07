@@ -73,6 +73,19 @@ Enquanto o filho explora, o pai acompanha tudo de um **painel carinhoso**:
 
 ---
 
+## 🛡️ Seguro por dentro
+
+A aventura roda numa **caixa fechada (container Docker)**, separada do computador de verdade:
+
+- 🧒 o explorador entra como um usuário **comum, sem poderes de administrador**;
+- 🔒 **nada do computador-mãe** fica visível ou acessível de dentro da aventura;
+- 🧯 limites de memória, CPU e processos evitam sustos;
+- 🔑 a porta de entrada tem **senha**.
+
+É um lugar seguro para **errar, testar e aprender** sem quebrar nada. 💚
+
+---
+
 ## 💚 Por que isso existe
 
 Porque tela pode ser **ponte**, não muro.
