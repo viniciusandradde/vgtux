@@ -66,12 +66,14 @@ services:
     mem_limit: ${CONTAINER_MEMORY:-1500m}
     mem_reservation: 512m
 
-    # Terminal web da aventura, exposto pelo Traefik com HTTPS.
-    # A senha é o HTTP Basic Auth do próprio ttyd (JOGADOR_SENHA).
+    # Terminal web (ttyd) servido sob /app no mesmo domínio. A casca PWA
+    # (serviço terminal-shell) fica na raiz e embute o terminal num iframe.
+    # Senha = HTTP Basic Auth do próprio ttyd (JOGADOR_SENHA).
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"
-      - "traefik.http.routers.questterm.rule=Host(`${TERMINAL_DOMAIN:-vgtux.vsanexus.com}`)"
+      - "traefik.http.routers.questterm.rule=Host(`${TERMINAL_DOMAIN:-vgtux.vsanexus.com}`) && PathPrefix(`/app`)"
+      - "traefik.http.routers.questterm.priority=100"
       - "traefik.http.routers.questterm.entrypoints=websecure"
       - "traefik.http.routers.questterm.tls.certresolver=letsencrypt"
       - "traefik.http.services.questterm.loadbalancer.server.port=7681"
@@ -100,6 +102,27 @@ services:
       - "traefik.http.routers.portalpai.entrypoints=websecure"
       - "traefik.http.routers.portalpai.tls.certresolver=letsencrypt"
       - "traefik.http.services.portalpai.loadbalancer.server.port=8080"
+
+  # ── Casca PWA do terminal (raiz de TERMINAL_DOMAIN) ──────────
+  # Serve o app instalável (manifest/ícones/SW) e embute o ttyd (/app)
+  # num iframe. Roteador de menor prioridade: pega tudo que não é /app.
+  terminal-shell:
+    build:
+      context: ./terminal-shell
+      dockerfile: Dockerfile
+    container_name: minecraft-terminal-shell
+    restart: unless-stopped
+    networks:
+      - dokploy-network
+    mem_limit: 64m
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      - "traefik.http.routers.questshell.rule=Host(`${TERMINAL_DOMAIN:-vgtux.vsanexus.com}`)"
+      - "traefik.http.routers.questshell.priority=1"
+      - "traefik.http.routers.questshell.entrypoints=websecure"
+      - "traefik.http.routers.questshell.tls.certresolver=letsencrypt"
+      - "traefik.http.services.questshell.loadbalancer.server.port=80"
 
 volumes:
   jogador-home:

@@ -44,6 +44,7 @@ echo "╚═══════════════════════�
 exec ttyd \
     --writable \
     --port 7681 \
+    --base-path /app \
     --credential "jogador:${SENHA}" \
     --terminal-type xterm-256color \
     -t titleFixed='Minecraft Quest' \

@@ -9,7 +9,7 @@ import os, json, time, asyncio
 from pathlib import Path
 from datetime import datetime, date
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 
@@ -132,6 +132,61 @@ def checar(senha):
 @app.get('/', response_class=HTMLResponse)
 def home():
     return (Path('/app/portal.html')).read_text()
+
+# ── PWA (instalável no Android) ───────────────────────────────
+
+_MANIFEST = {
+    "name": "VGTUX Painel",
+    "short_name": "Painel",
+    "description": "Painel do Pai Vinny — acompanhe a jornada do explorador",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#0e0b07",
+    "theme_color": "#1f6feb",
+    "icons": [
+        {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+        {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+    ],
+}
+
+_SW_JS = """
+const CACHE = 'vgtux-painel-v1';
+const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(ks => Promise.all(
+    ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', e => {
+  const u = new URL(e.request.url);
+  if (e.request.method !== 'GET' || u.pathname.startsWith('/api/')) return;  // API sempre rede
+  e.respondWith(fetch(e.request).then(r => {
+    const cp = r.clone();
+    caches.open(CACHE).then(c => c.put(e.request, cp)).catch(() => {});
+    return r;
+  }).catch(() => caches.match(e.request)));
+});
+"""
+
+@app.get('/manifest.webmanifest')
+def manifest():
+    return JSONResponse(_MANIFEST, media_type='application/manifest+json')
+
+@app.get('/sw.js')
+def service_worker():
+    return Response(_SW_JS, media_type='application/javascript')
+
+@app.get('/icon-192.png')
+def icon192():
+    return FileResponse('/app/icon-192.png', media_type='image/png')
+
+@app.get('/icon-512.png')
+def icon512():
+    return FileResponse('/app/icon-512.png', media_type='image/png')
 
 @app.get('/api/estado')
 def api_estado(senha: str = ''):

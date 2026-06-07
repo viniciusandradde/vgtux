@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>VGTUX Aventura ⚔</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#43a047">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="VGTUX Aventura">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="icon" type="image/png" href="/icon-192.png">
+<style>
+  html,body{margin:0;height:100%;background:#0e0e10;overflow:hidden}
+  iframe{border:0;width:100%;height:100%;display:block}
+</style>
+</head>
+<body>
+  <!-- O terminal real (ttyd) roda sob /app, na mesma origem -->
+  <iframe src="/app/" allow="clipboard-read; clipboard-write"></iframe>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+    }
+  </script>
+</body>
+</html>

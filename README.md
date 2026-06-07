@@ -30,6 +30,16 @@ de jogo — feito por um pai que acredita que quem aprende todo dia nunca para d
 Nada para instalar. O explorador abre o endereço da aventura no **navegador**
 (computador ou celular), digita a **senha** — e já está dentro do terminal, no meio da quest. ✨
 
+## 📲 Instale como app (Android)
+
+Os dois cantos viram **app na tela inicial** (PWA):
+
+- 🟢 **VGTUX Aventura** — o terminal da quest (para o filho)
+- 💙 **VGTUX Painel** — o acompanhamento (para o pai)
+
+No Chrome do Android: abra o endereço → menu **⋮** → **Instalar app / Adicionar à tela inicial**.
+Abre em tela cheia, com ícone próprio. 🎮
+
 ---
 
 ## 🎮 Como a aventura acontece
