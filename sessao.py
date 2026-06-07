@@ -8,7 +8,7 @@
 ╚══════════════════════════════════════════════════════════════╝
 """
 
-import os, sys, json, time, secrets, subprocess, threading
+import os, sys, json, time, secrets, shutil, subprocess, threading
 from datetime import date, datetime
 from pathlib import Path
 
@@ -33,6 +33,7 @@ DICAS_FILE      = DATA_DIR / 'dicas.json'
 MENSAGEM_FILE   = DATA_DIR / 'mensagem.txt'
 RESUMO_PEND     = DATA_DIR / 'resumo_pendente.json'
 RESUMO_ENVIADO  = DATA_DIR / 'resumo_enviado.json'
+RESET_FLAG      = DATA_DIR / 'reset.flag'
 
 # ═══════════════════════════════════════════════════════════════
 # CORES ANSI
@@ -297,6 +298,18 @@ def calcular_linhas_minimas(dados):
         return LINHAS_BASE + (dias // CICLO_DIAS) * CICLO_INCREMENTO
     except Exception:
         return LINHAS_BASE
+
+def aplicar_reset_se_pedido():
+    """Se o pai pediu reset pelo portal (reset.flag em /data), limpa a casa
+    da aventura do filho. O progresso em /data já foi zerado pelo portal."""
+    try:
+        if RESET_FLAG.exists():
+            aventura = Path.home() / 'aventura'
+            if aventura.exists():
+                shutil.rmtree(aventura, ignore_errors=True)
+            RESET_FLAG.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 def escrever_trail(msg):
     try:
@@ -802,6 +815,7 @@ def main():
         return
 
     _garantir_data()
+    aplicar_reset_se_pedido()
     dados = carregar_dados()
 
     mostrar_dicas_login()

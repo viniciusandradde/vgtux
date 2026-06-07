@@ -191,6 +191,24 @@ def limpar_mensagem(senha: str = ''):
         f.write_text('')
     return {"ok": True}
 
+@app.post('/api/reset')
+def api_reset(senha: str = ''):
+    """Reseta a jornada: volta para a etapa 1, zera histórico/biblioteca,
+    limpa resumos pendentes e sinaliza a quest para limpar a casa do filho."""
+    checar(senha)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    (DATA_DIR / 'historico.json').write_text(json.dumps(
+        {"inicio": str(date.today()), "etapa_atual": 1, "etapas": []},
+        ensure_ascii=False, indent=2))
+    for nome in ('resumo_pendente.json', 'resumo_enviado.json'):
+        p = DATA_DIR / nome
+        if p.exists():
+            p.unlink()
+    (DATA_DIR / 'trail.log').write_text('')
+    # sessao.py vê este flag no próximo login e apaga ~/aventura (desafios)
+    (DATA_DIR / 'reset.flag').write_text(datetime.now().isoformat())
+    return {"ok": True}
+
 # ── Resumo do livro enviado pelo filho (via token, sem senha do pai) ──
 
 def ler_pendente():

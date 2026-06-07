@@ -216,6 +216,24 @@ select#dicas-rapidas option{background:var(--bg3)}
     </div>
   </div>
 
+  <!-- ZONA DE RESET -->
+  <div class="card">
+    <div class="card-header" onclick="toggleCard(this)">
+      <h2>♻️ Resetar Progresso</h2>
+      <span class="toggle-icon">▼</span>
+    </div>
+    <div class="card-body">
+      <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:.6rem">
+        Volta a aventura para a <b>etapa 1</b>, apaga o histórico/biblioteca e limpa a
+        pasta de desafios do filho. <b>Não dá para desfazer.</b>
+      </div>
+      <button class="btn-send" id="btn-reset"
+              style="background:#7f1d1d"
+              onclick="resetarProgresso()">🗑 Resetar tudo</button>
+      <span id="reset-feedback" style="margin-left:.6rem;font-size:.8rem"></span>
+    </div>
+  </div>
+
 </div><!-- /#app -->
 
 <div id="toast"></div>
@@ -463,6 +481,31 @@ function enviarMensagem() {
   })
   .catch(() => mostrarFeedback('❌ Erro ao enviar', false))
   .finally(() => { btn.disabled = false; });
+}
+
+// ── Resetar progresso ───────────────────────────────────────
+function resetarProgresso() {
+  const fb = document.getElementById('reset-feedback');
+  if (!confirm('Resetar TODO o progresso?\n\nIsso volta para a etapa 1 e apaga o histórico, a biblioteca e os arquivos dos desafios. Não dá para desfazer.')) return;
+  if (!confirm('Tem certeza mesmo? Esta ação é definitiva.')) return;
+  const btn = document.getElementById('btn-reset');
+  btn.disabled = true;
+  fb.style.color = 'var(--text-muted)';
+  fb.textContent = 'Resetando...';
+  fetch(`/api/reset?senha=${encodeURIComponent(senha)}`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        fb.style.color = 'var(--green)';
+        fb.textContent = '✅ Progresso resetado! Voltou para a etapa 1.';
+        mostrarToast('♻️ Progresso resetado para a etapa 1');
+      } else {
+        fb.style.color = '#f87171';
+        fb.textContent = '❌ Não foi possível resetar.';
+      }
+    })
+    .catch(() => { fb.style.color = '#f87171'; fb.textContent = '❌ Erro ao resetar.'; })
+    .finally(() => { btn.disabled = false; });
 }
 
 function mostrarFeedback(msg, ok) {
