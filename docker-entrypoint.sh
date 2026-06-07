@@ -2,14 +2,13 @@
 # =============================================================
 # docker-entrypoint.sh
 # Roda TODA VEZ que o container inicia.
-# Define a senha do jogador a partir da variável de ambiente
-# e inicia o servidor SSH.
+# Sobe o terminal web (ttyd) que serve a quest no navegador,
+# protegido por senha (HTTP Basic Auth = JOGADOR_SENHA).
 # =============================================================
 set -e
 
-# Definir a senha do usuário jogador
-# (vem do .env via docker-compose)
 SENHA="${JOGADOR_SENHA:-minecraft123}"
+# Mantém a conta unix com senha (inofensivo; login web é via 'su' como root)
 echo "jogador:${SENHA}" | chpasswd
 
 # Volume compartilhado com o portal — garante permissões corretas
@@ -17,14 +16,12 @@ mkdir -p /data
 chown jogador:jogador /data
 chmod 755 /data
 
-# Mundo Minecraft persistido em volume — garante dono correto
+# Casa do filho (aventura + mundo Minecraft) persistida em volume
 mkdir -p /home/jogador/minecraft
 chown -R jogador:jogador /home/jogador/minecraft
 
-# Diretório de runtime do sshd
-mkdir -p /run/sshd
-
-# Propaga variáveis para a sessão SSH do filho (pam_env lê /etc/environment)
+# Propaga variáveis para a sessão do filho (su - jogador é login shell;
+# pam_env lê /etc/environment)
 {
   echo "MC_RAM_MIN=${MC_RAM_MIN:-512M}"
   echo "MC_RAM_MAX=${MC_RAM_MAX:-1G}"
@@ -37,10 +34,18 @@ mkdir -p /run/sshd
 echo "╔═══════════════════════════════════════════╗"
 echo "║      Minecraft Quest — Container ativo    ║"
 echo "║                                           ║"
-echo "║  SSH na porta 22                          ║"
+echo "║  Terminal web (ttyd) na porta 7681        ║"
 echo "║  Usuário:  jogador                        ║"
 echo "║  Minecraft na porta 25565 (após a quest)  ║"
 echo "╚═══════════════════════════════════════════╝"
 
-# Iniciar o servidor SSH em foreground
-exec /usr/sbin/sshd -D
+# Terminal web em foreground. Cada conexão do navegador abre uma nova
+# sessão da quest como 'jogador' (login shell = /opt/sessao.py).
+exec ttyd \
+    --writable \
+    --port 7681 \
+    --credential "jogador:${SENHA}" \
+    --terminal-type xterm-256color \
+    -t titleFixed='Minecraft Quest' \
+    -t fontSize=16 \
+    su - jogador

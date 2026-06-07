@@ -1,14 +1,15 @@
 # =============================================================
 # Dockerfile — Container do filho (Minecraft Quest)
-# Java 21 (Paper 1.21.x) + SSH + sessao.py como login shell
+# Java 21 (Paper 1.21.x) + ttyd (terminal web) + sessao.py
+# Acesso é pelo NAVEGADOR (ttyd), sem SSH.
 # =============================================================
 FROM eclipse-temurin:21-jre
 
 ARG MC_VERSION=1.21.4
+ARG TTYD_VERSION=1.7.7
 
-# Pacotes: SSH, Python (login shell + parse da API do Paper), utilitários
+# Pacotes: Python (login shell + parse da API do Paper), utilitários
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        openssh-server \
         python3 \
         ca-certificates \
         curl \
@@ -16,12 +17,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         less \
     && rm -rf /var/lib/apt/lists/*
 
+# ── Terminal web (ttyd) — binário estático conforme a arquitetura ──
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+        x86_64|amd64) tarch=x86_64 ;; \
+        aarch64|arm64) tarch=aarch64 ;; \
+        armv7l|armhf) tarch=arm ;; \
+        *) echo "arch não suportada para ttyd: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /usr/local/bin/ttyd \
+        "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${tarch}"; \
+    chmod +x /usr/local/bin/ttyd; \
+    ttyd --version
+
 # ── Usuário do filho ─────────────────────────────────────────
 RUN useradd -m -s /bin/bash jogador \
-    && mkdir -p /home/jogador/minecraft \
-    && mkdir -p /run/sshd
+    && mkdir -p /home/jogador/minecraft
 
-# ── Login shell = gerenciador de sessões ─────────────────────
+# ── Login shell = gerenciador de sessões (a quest) ───────────
 COPY sessao.py /opt/sessao.py
 RUN chmod +x /opt/sessao.py \
     && usermod -s /opt/sessao.py jogador \
@@ -43,15 +57,8 @@ RUN set -eux; \
 RUN echo "eula=true" > /home/jogador/minecraft/eula.txt \
     && chown -R jogador:jogador /home/jogador/minecraft
 
-# ── Hardening básico do sshd ─────────────────────────────────
-RUN sed -i \
-        -e 's/^#\?PermitRootLogin.*/PermitRootLogin no/' \
-        -e 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' \
-        /etc/ssh/sshd_config \
-    && echo "AllowUsers jogador" >> /etc/ssh/sshd_config
-
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-EXPOSE 22 25565
+EXPOSE 7681 25565
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

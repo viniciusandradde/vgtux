@@ -7,12 +7,12 @@
 #   Parar:    docker compose down
 #
 # No Dokploy: tipo "Compose", apontando para este arquivo.
-# Portal e landing são expostos pelo Traefik (sem publicar porta
-# no host). Só SSH (2222) e Minecraft (25565) publicam no host.
+# Terminal da quest e portal são expostos pelo Traefik (sem publicar
+# porta no host). Só o Minecraft (25565) publica no host.
 # =============================================================
 
 services:
-  # ── Container do filho: SSH + sessao.py + Minecraft ──────────
+  # ── Container do filho: terminal web (ttyd) + quest + Minecraft ──
   minecraft-quest:
     build:
       context: .
@@ -34,8 +34,7 @@ services:
       ADMIN_DOMAIN: ${ADMIN_DOMAIN:-adminvgtux.vsanexus.com}
 
     ports:
-      - "${SSH_PORT:-2222}:22"       # SSH do filho (porta livre no host)
-      - "${MC_PORT:-25565}:25565"    # Minecraft
+      - "${MC_PORT:-25565}:25565"    # Minecraft (cliente do jogo conecta aqui)
 
     volumes:
       # Casa do filho: persiste a pasta 'aventura' (etapas) + o servidor/mundo Minecraft
@@ -43,8 +42,22 @@ services:
       # Estado compartilhado com o portal (progresso, resumos, heartbeat)
       - sessao-data:/data
 
+    networks:
+      - default
+      - dokploy-network
+
     mem_limit: ${CONTAINER_MEMORY:-1500m}
     mem_reservation: 512m
+
+    # Terminal web da aventura, exposto pelo Traefik com HTTPS.
+    # A senha é o HTTP Basic Auth do próprio ttyd (JOGADOR_SENHA).
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      - "traefik.http.routers.questterm.rule=Host(`${TERMINAL_DOMAIN:-vgtux.vsanexus.com}`)"
+      - "traefik.http.routers.questterm.entrypoints=websecure"
+      - "traefik.http.routers.questterm.tls.certresolver=letsencrypt"
+      - "traefik.http.services.questterm.loadbalancer.server.port=7681"
 
   # ── Portal do pai (painel admin) — via Traefik ───────────────
   portal:
@@ -70,24 +83,6 @@ services:
       - "traefik.http.routers.portalpai.entrypoints=websecure"
       - "traefik.http.routers.portalpai.tls.certresolver=letsencrypt"
       - "traefik.http.services.portalpai.loadbalancer.server.port=8080"
-
-  # ── Landing page pública — via Traefik ───────────────────────
-  landing:
-    build:
-      context: ./landing
-      dockerfile: Dockerfile
-    container_name: minecraft-landing
-    restart: unless-stopped
-    networks:
-      - dokploy-network
-    mem_limit: 64m
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=dokploy-network"
-      - "traefik.http.routers.landing.rule=Host(`${LANDING_DOMAIN:-vgtux.vsanexus.com}`)"
-      - "traefik.http.routers.landing.entrypoints=websecure"
-      - "traefik.http.routers.landing.tls.certresolver=letsencrypt"
-      - "traefik.http.services.landing.loadbalancer.server.port=80"
 
 volumes:
   jogador-home:

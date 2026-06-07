@@ -25,6 +25,13 @@ de jogo — feito por um pai que acredita que quem aprende todo dia nunca para d
 
 ---
 
+## 🌐 Abra no navegador
+
+Nada para instalar. O explorador abre o endereço da aventura no **navegador**
+(computador ou celular), digita a **senha** — e já está dentro do terminal, no meio da quest. ✨
+
+---
+
 ## 🎮 Como a aventura acontece
 
 | | A jornada do explorador |

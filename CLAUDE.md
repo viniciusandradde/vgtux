@@ -5,27 +5,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 "Minecraft Quest" (Pai Vinny) — a gamified parental-control system that gates a child's
-SSH/Linux terminal time behind reading sessions. The child connects via SSH; their login
-shell is a Python session manager that grants timed bash sessions and requires reading a
-book + writing a summary to unlock the next session. A separate FastAPI "portal" lets the
-parent watch progress in real time and push messages to the child's terminal.
+Linux terminal time behind reading. The child opens a **web terminal in the browser**
+(ttyd, password-protected); their login shell is a Python session manager that runs a
+journey of Linux challenges and requires reading a book + writing a summary to unlock the
+next stage. A separate FastAPI "portal" lets the parent watch progress in real time and
+push messages to the child's terminal.
 
 The codebase and all UI strings are in Brazilian Portuguese — keep that convention.
 
 ## Architecture
 
-Three services (`docker-compose.yml`): **`minecraft-quest`** (child's SSH + Minecraft),
-**`portal`** (parent dashboard), **`landing`** (public static page). The first two
+Two services (`docker-compose.yml`): **`minecraft-quest`** (the child's container: ttyd web
+terminal + the quest + Minecraft server) and **`portal`** (parent dashboard). They
 communicate **only** through a shared Docker volume mounted at `/data` (`sessao-data`) —
 there is no direct network/API call between them; all coordination is file-based.
 
-Repo layout: `sessao.py` + `Dockerfile` + `iniciar-minecraft.sh` + `docker-entrypoint.sh`
-build the minecraft container (root context). `portal/` and `landing/` each have their own
-`Dockerfile` and build context.
+Access is **browser-only** (no SSH): `docker-entrypoint.sh` runs `ttyd ... su - jogador`,
+so each browser connection to the terminal domain opens a fresh quest session as `jogador`.
+ttyd's HTTP Basic Auth (`--credential jogador:$JOGADOR_SENHA`) is the password gate, served
+over HTTPS by Traefik. Minecraft (25565) is the only host-published port.
 
-**`sessao.py`** — runs inside the child's (minecraft) container as the SSH login shell
-(set via `usermod -s /opt/sessao.py jogador` in the Dockerfile). v1.1 model: a journey of
-`TOTAL_ETAPAS` (20) **etapas**, max `ETAPAS_POR_DIA` (2) per day.
+Repo layout: `sessao.py` + `Dockerfile` + `iniciar-minecraft.sh` + `docker-entrypoint.sh`
+build the quest container (root context). `portal/` has its own `Dockerfile` and build context.
+
+**`sessao.py`** — runs inside the child's container as the login shell of `jogador`
+(set via `usermod -s /opt/sessao.py jogador`; reached through `su - jogador` under ttyd).
+Model: a journey of `TOTAL_ETAPAS` (20) **etapas**, max `ETAPAS_POR_DIA` (2) per day.
 - `ETAPAS` (top of file) is the list of 20 progressive Linux missions. Each has a `missao`,
   `dica`, a `verificar` shell command (run as the child via `verificar_missao`), and a `teaser`.
 - `fazer_etapa()` runs one etapa: **(1) challenge** — `executar_sessao_bash` (timed `bash -i`,
@@ -41,8 +46,8 @@ build the minecraft container (root context). `portal/` and `landing/` each have
 - `iniciar-minecraft.sh` is the **reward**: it reads `etapa_atual` from `historico.json` and
   refuses to launch the Paper server until all 20 etapas are done (the only place that promises
   "play with dad").
-- `sys.argv[1] == '-c'` short-circuits to plain bash so scp/rsync/non-interactive SSH still work.
 - Data migration: `carregar_dados` upgrades the v1.0 `sessoes` shape to `etapas` + `etapa_atual`.
+- (`sys.argv[1] == '-c'` still short-circuits to plain bash — legacy of the old SSH path, harmless.)
 
 **`portal/portal.py`** — FastAPI backend in the portal container; serves `portal.html`.
 - Read-only dashboard of `/data`: `get_estado()` aggregates etapa/book stats (`_etapas()`
@@ -75,30 +80,33 @@ update both `sessao.py` and `portal/portal.py` (shared JSON shapes, no schema en
 ## Commands
 
 ```bash
-cp .env.example .env           # configure domains/passwords/ports first
-docker compose up -d --build   # build + start all three services
+cp .env.example .env           # configure domains/passwords first
+docker compose up -d --build   # build + start both services
 docker compose logs -f         # tail logs
 docker compose down            # stop
 ```
 
-Connect as the child: `ssh jogador@<host> -p 2222` (drops into the etapa flow).
-`iniciar-minecraft` starts the Paper server but is **locked until all 20 etapas are done**.
-Portal: `https://<ADMIN_DOMAIN>/?senha=<PORTAL_SENHA>`. Landing: `https://<LANDING_DOMAIN>`.
+Child access: open `https://<TERMINAL_DOMAIN>` in a browser → Basic Auth (`jogador` +
+`JOGADOR_SENHA`) → drops into the etapa flow. No SSH. `iniciar-minecraft` (run inside the
+terminal) starts the Paper server but is **locked until all 20 etapas are done**.
+Portal: `https://<ADMIN_DOMAIN>/?senha=<PORTAL_SENHA>`.
+Admin/emergency shell: `docker exec -it minecraft-quest bash` on the host.
 
 There are no tests, linter, or build step beyond Docker.
 
 ## Deploy (Dokploy + Traefik)
 
 Target host runs Dokploy with Traefik as the reverse proxy. Constraints baked into the config:
-- Host port **8080 is taken by Traefik** — `portal` and `landing` are **not** published on the
-  host. They join the external `dokploy-network` and are routed by Traefik **labels** in
-  `docker-compose.yml` (keyed on `ADMIN_DOMAIN` / `LANDING_DOMAIN`, TLS via `letsencrypt`).
-- Only `minecraft-quest` publishes host ports: **2222** (SSH) and **25565** (Minecraft).
+- Host port **8080 is taken by Traefik** — neither web service is published on the host. Both
+  join the external `dokploy-network` and are routed by Traefik **labels** in
+  `docker-compose.yml`: `minecraft-quest`'s ttyd (port 7681) on `TERMINAL_DOMAIN`, and `portal`
+  (8080) on `ADMIN_DOMAIN`, TLS via `letsencrypt`.
+- Only **25565** (Minecraft) is published on the host (raw TCP — not via Traefik).
 - `dokploy-network` is declared `external: true` — it must already exist (Dokploy creates it).
-- Deploy is done via the Dokploy UI as a **Compose** app pointing at the Git repo; set the
-  env vars from `.env.example` in the service's Environment tab. The Domains tab can also
-  inject the Traefik labels as an alternative to the ones in the compose file.
+- Deploy via the Dokploy UI as a **Compose** app pointing at the Git repo; set the env vars
+  from `.env.example` in the Environment tab. If you use the Dokploy **Domains** tab instead of
+  the compose labels, don't enable both for the same host (duplicate Traefik routers).
 
-When changing the session duration, set `SESSAO_MINUTOS` — it is read by **both** `sessao.py`
-(`SESSAO_MINUTOS` constant default) and `portal/portal.py` (env var) so the dashboard timer
-stays in sync.
+When changing journey timing set `SESSAO_MINUTOS` / `LEITURA_MINUTOS` / `ETAPAS_POR_DIA` — they
+reach `sessao.py` via `/etc/environment` (written by the entrypoint) and the `portal` via its
+own env, so terminal and dashboard stay in sync.
