@@ -30,6 +30,8 @@ services:
       SESSAO_MINUTOS: ${SESSAO_MINUTOS:-30}
       LEITURA_MINUTOS: ${LEITURA_MINUTOS:-30}
       ETAPAS_POR_DIA: ${ETAPAS_POR_DIA:-2}
+      # A partir desta etapa, o resumo é no papel + foto (em vez de digitado)
+      FOTO_A_PARTIR: ${FOTO_A_PARTIR:-10}
       # Usado para montar o link do resumo no portal (mostrado no terminal)
       ADMIN_DOMAIN: ${ADMIN_DOMAIN:-adminvgtux.vsanexus.com}
 

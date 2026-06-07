@@ -28,6 +28,7 @@ chown -R jogador:jogador /home/jogador/minecraft
   echo "SESSAO_MINUTOS=${SESSAO_MINUTOS:-30}"
   echo "LEITURA_MINUTOS=${LEITURA_MINUTOS:-30}"
   echo "ETAPAS_POR_DIA=${ETAPAS_POR_DIA:-2}"
+  echo "FOTO_A_PARTIR=${FOTO_A_PARTIR:-10}"
   echo "ADMIN_DOMAIN=${ADMIN_DOMAIN:-adminvgtux.vsanexus.com}"
 } > /etc/environment
 

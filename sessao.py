@@ -19,6 +19,8 @@ SESSAO_MINUTOS   = int(os.environ.get('SESSAO_MINUTOS', '30'))
 LEITURA_MINUTOS  = int(os.environ.get('LEITURA_MINUTOS', '30'))
 ETAPAS_POR_DIA   = int(os.environ.get('ETAPAS_POR_DIA', '2'))
 TOTAL_ETAPAS     = 20
+# A partir desta etapa, o resumo é no PAPEL + FOTO (em vez de digitado)
+FOTO_A_PARTIR    = int(os.environ.get('FOTO_A_PARTIR', '10'))
 LINHAS_BASE      = 10
 CICLO_DIAS       = 10
 CICLO_INCREMENTO = 2
@@ -564,7 +566,9 @@ def temporizador_leitura(minutos):
 
 def coletar_resumo_portal(numero_etapa, linhas_minimas):
     """Gera um link para o portal, aguarda o filho enviar o resumo de lá.
-    Retorna (titulo, resumo, n_linhas) ou None se ele cancelar (Ctrl+C)."""
+    Modo 'texto' (etapa < FOTO_A_PARTIR) ou 'foto' (papel + foto).
+    Retorna o dict do envio (com titulo + resumo/foto) ou None se cancelar."""
+    modo  = 'foto' if numero_etapa >= FOTO_A_PARTIR else 'texto'
     token = secrets.token_urlsafe(6)
     try:
         RESUMO_ENVIADO.unlink(missing_ok=True)
@@ -573,6 +577,7 @@ def coletar_resumo_portal(numero_etapa, linhas_minimas):
     RESUMO_PEND.write_text(json.dumps({
         "token":          token,
         "etapa":          numero_etapa,
+        "modo":           modo,
         "linhas_minimas": linhas_minimas,
         "criado":         datetime.now().isoformat(),
         "enviado":        False,
@@ -582,9 +587,26 @@ def coletar_resumo_portal(numero_etapa, linhas_minimas):
 
     limpar()
     separador('═', 58, C.VERDE)
-    print(cor('  ✍️   RESUMO DO LIVRO  —  pelo portal web', C.VERDE, C.NEGRITO))
-    separador('═', 58, C.VERDE)
-    print(f"""
+    if modo == 'foto':
+        print(cor('  📸  RESUMO NO PAPEL  —  envie a FOTO pelo portal', C.VERDE, C.NEGRITO))
+        separador('═', 58, C.VERDE)
+        print(f"""
+  Agora é no papel! 📝  (a partir da etapa {FOTO_A_PARTIR} o resumo é à mão)
+
+  {cor('1.', C.AMARELO)}  Pegue papel e caneta e escreva o resumo do livro.
+  {cor('2.', C.AMARELO)}  Abra este link no celular:
+
+      {cor(url, C.CIANO, C.NEGRITO)}
+
+  {cor('3.', C.AMARELO)}  Tire uma {cor('foto', C.CIANO, C.NEGRITO)} da folha, escreva o título e ENVIE.
+
+  {cor('📱  Dica:', C.MAGENTA, C.NEGRITO)} no celular o botão abre a câmera direto.
+  O seu pai vai receber a foto no painel dele. 💚
+""")
+    else:
+        print(cor('  ✍️   RESUMO DO LIVRO  —  pelo portal web', C.VERDE, C.NEGRITO))
+        separador('═', 58, C.VERDE)
+        print(f"""
   Agora registre o que você aprendeu no livro.
   Desta vez você escreve pelo {cor('navegador', C.CIANO, C.NEGRITO)}, no portal!
 
@@ -596,14 +618,11 @@ def coletar_resumo_portal(numero_etapa, linhas_minimas):
       ({cor(f'mínimo {linhas_minimas} linhas, cada uma com 20+ caracteres', C.DIM)})
 
   {cor('3.', C.AMARELO)}  Toque em ENVIAR. Esta tela vai liberar sozinha. ✨
-
-  {cor('📱  No celular:', C.MAGENTA, C.NEGRITO)} abra o navegador (Chrome/Safari) e
-      digite o endereço acima na barra de busca.
 """)
     separador('─', 58, C.VERDE)
-    print(cor("\n  ⏳  Aguardando o seu resumo chegar pelo portal...", C.AMARELO))
-    print(cor("     (se precisar, você pode pressionar Ctrl+C para sair e\n"
-              "      voltar depois — sua etapa fica salva)", C.DIM))
+    print(cor("\n  ⏳  Aguardando chegar pelo portal...", C.AMARELO))
+    print(cor("     (se precisar, pressione Ctrl+C para sair e voltar depois —\n"
+              "      sua etapa fica salva)", C.DIM))
 
     giro = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
     i = 0
@@ -618,15 +637,13 @@ def coletar_resumo_portal(numero_etapa, linhas_minimas):
                     RESUMO_ENVIADO.unlink(missing_ok=True)
                     RESUMO_PEND.unlink(missing_ok=True)
                     sys.stdout.write("\r" + " " * 50 + "\r")
-                    return (data.get("titulo", "Livro"),
-                            data.get("resumo", ""),
-                            int(data.get("linhas", 0)))
+                    return data
             sys.stdout.write(f"\r  {cor(giro[i % len(giro)], C.CIANO)}  aguardando envio... ")
             sys.stdout.flush()
             i += 1
             time.sleep(2)
     except KeyboardInterrupt:
-        print(cor("\n\n  Sem problema! Volte quando enviar o resumo. 👋", C.DIM))
+        print(cor("\n\n  Sem problema! Volte quando enviar. 👋", C.DIM))
         return None
 
 # ═══════════════════════════════════════════════════════════════
@@ -787,19 +804,23 @@ def fazer_etapa(dados):
     res  = coletar_resumo_portal(numero, lmin)
     if res is None:
         return False
-    titulo, resumo, n_linhas = res
+    titulo = res.get("titulo", "Livro")
 
     registro.update({
-        "fim":           datetime.now().isoformat(),
-        "titulo_livro":  titulo,
-        "resumo":        resumo,
-        "linhas_resumo": n_linhas,
+        "fim":            datetime.now().isoformat(),
+        "titulo_livro":   titulo,
         "resumo_enviado": True,
-        "completa":      True,
+        "completa":       True,
     })
+    if res.get("tipo") == "foto" or res.get("foto"):
+        registro.update({"tipo": "foto", "foto": res.get("foto", "")})
+        escrever_trail(f"📸 Etapa {numero} concluída — resumo (foto): {titulo}")
+    else:
+        registro.update({"resumo": res.get("resumo", ""),
+                         "linhas_resumo": int(res.get("linhas", 0))})
+        escrever_trail(f"📚 Etapa {numero} concluída — livro: {titulo}")
     dados["etapa_atual"] = numero + 1
     salvar_dados(dados)
-    escrever_trail(f"📚 Etapa {numero} concluída — livro: {titulo}")
 
     tela_etapa_concluida(dados, numero, etapa)
     return True

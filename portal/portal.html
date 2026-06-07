@@ -432,7 +432,23 @@ function renderHistorico(sessoes) {
     return;
   }
   el.innerHTML = sessoes.map((s, i) => {
-    const livroHtml = s.titulo_livro ? `
+    let livroHtml = '';
+    if (s.foto) {
+      livroHtml = `
+      <div class="livro-row">
+        <span>📸</span>
+        <span class="livro-titulo">${s.titulo_livro || 'Resumo no papel'}</span>
+        <span class="livro-linhas">(foto)</span>
+        <button class="btn-resumo" onclick="toggleResumo(${i})">ver foto</button>
+      </div>
+      <div class="resumo-box" id="r${i}">
+        <a href="/api/foto/${encodeURIComponent(s.foto)}?senha=${encodeURIComponent(senha)}" target="_blank">
+          <img src="/api/foto/${encodeURIComponent(s.foto)}?senha=${encodeURIComponent(senha)}"
+               style="width:100%;border-radius:4px" alt="resumo no papel" />
+        </a>
+      </div>`;
+    } else if (s.titulo_livro) {
+      livroHtml = `
       <div class="livro-row">
         <span>📖</span>
         <span class="livro-titulo">${s.titulo_livro}</span>
@@ -441,7 +457,8 @@ function renderHistorico(sessoes) {
       </div>
       <div class="resumo-box" id="r${i}">
         <pre>${(s.resumo || '').replace(/</g,'&lt;')}</pre>
-      </div>` : '';
+      </div>`;
+    }
     return `<div class="sessao-card">
       <div class="sessao-head">
         <span class="s-num">Etapa ${s.numero || s.numero_do_dia || '?'}/${ETAPAS_TOTAL}</span>

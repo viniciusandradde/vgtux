@@ -49,10 +49,13 @@ Model: a journey of `TOTAL_ETAPAS` (20) **etapas**, max `ETAPAS_POR_DIA` (2) per
   `verificar_missao` until the mission is actually done; **(2) reading gate** —
   `temporizador_leitura`; **(3) summary** — `coletar_resumo_portal` (see below). Then reveals
   the next etapa. `registro['desafio_ok']` lets a disconnected etapa resume mid-way.
-- `coletar_resumo_portal` writes `resumo_pendente.json` with a random token, shows the child a
+- `coletar_resumo_portal` writes `resumo_pendente.json` with a random token + a `modo`
+  (`texto` for etapa < `FOTO_A_PARTIR` (10), `foto` from etapa 10 on), shows the child a
   `https://<ADMIN_DOMAIN>/resumo?t=<token>` link, and **polls** `resumo_enviado.json` until the
-  portal receives the summary (Ctrl+C aborts; the etapa stays resumable). Summary is no longer
-  typed in the terminal.
+  portal receives it (Ctrl+C aborts; the etapa stays resumable). In `foto` mode the child writes
+  on **paper** and uploads **one photo** (`/api/resumo-foto`); in `texto` mode types lines
+  (`/api/resumo-enviar`). It returns the raw envio dict; `fazer_etapa` stores `resumo`+`linhas`
+  or `tipo:'foto'`+`foto`.
 - Required summary length grows over time: `calcular_linhas_minimas` (LINHAS_BASE + cycles).
 - `iniciar-minecraft.sh` is the **reward**: it reads `etapa_atual` from `historico.json` and
   refuses to launch the Paper server until all 20 etapas are done (the only place that promises
@@ -65,8 +68,10 @@ Model: a journey of `TOTAL_ETAPAS` (20) **etapas**, max `ETAPAS_POR_DIA` (2) per
   handles both `etapas` and legacy `sessoes`); `/api/stream` is an SSE endpoint (4s).
 - Parent → child messaging via `/api/dica` (password-protected by `senha` query param).
 - **Child summary flow (token-auth, no parent password):** `GET /resumo?t=<token>` serves a
-  mobile form (`_RESUMO_HTML`); `POST /api/resumo-enviar` validates the token against
-  `resumo_pendente.json` + line rules, then writes `resumo_enviado.json`.
+  mobile form (`_RESUMO_HTML`) whose UI branches on `modo`. `texto`: `POST /api/resumo-enviar`
+  (line rules). `foto`: `POST /api/resumo-foto` (multipart; image only, ≤10 MB) saves to
+  `/data/fotos/`. Parent views photos via `GET /api/foto/{nome}` (senha-protected, name
+  sanitized against path traversal); `portal.html` renders "ver foto" with an `<img>`.
 
 ### The `/data` file contract (the real interface between the two processes)
 
@@ -76,8 +81,9 @@ Model: a journey of `TOTAL_ETAPAS` (20) **etapas**, max `ETAPAS_POR_DIA` (2) per
 | `online.json` | sessao | portal | heartbeat; portal treats it stale after 90s (`ler_online`) |
 | `dicas.json` | portal | sessao | queued login messages; child marks `mostrada: true` after showing |
 | `mensagem.txt` | portal | sessao | one real-time message; child writes it to the bash tty then blanks the file |
-| `resumo_pendente.json` | sessao | portal | open summary request: `token`, `etapa`, `linhas_minimas` |
-| `resumo_enviado.json` | portal | sessao | summary the child submitted; sessao consumes + deletes it |
+| `resumo_pendente.json` | sessao | portal | open summary request: `token`, `etapa`, `modo` (`texto`/`foto`), `linhas_minimas` |
+| `resumo_enviado.json` | portal | sessao | submitted summary; `tipo:'foto'`+`foto` (filename) or `resumo`+`linhas`. sessao consumes + deletes it |
+| `fotos/` (dir) | portal | portal | handwritten-summary photos (etapa ≥ `FOTO_A_PARTIR`); served to the parent via `GET /api/foto/{nome}` (senha) |
 | `trail.log` | sessao | portal | activity log shown in the dashboard (`escrever_trail`) |
 
 Real-time messaging works by `sessao.py` writing directly to `/proc/<bash_pid>/fd/1` — the

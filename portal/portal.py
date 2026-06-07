@@ -8,7 +8,8 @@ e expõe API + SSE para o dashboard web.
 import os, json, time, asyncio
 from pathlib import Path
 from datetime import datetime, date
-from fastapi import FastAPI, HTTPException, Request
+import re
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
@@ -22,6 +23,8 @@ ETAPAS_POR_DIA = int(os.environ.get('ETAPAS_POR_DIA', '2'))
 
 RESUMO_PEND    = DATA_DIR / 'resumo_pendente.json'
 RESUMO_ENVIADO = DATA_DIR / 'resumo_enviado.json'
+FOTOS_DIR      = DATA_DIR / 'fotos'
+MAX_FOTO_BYTES = 10 * 1024 * 1024  # 10 MB
 
 app = FastAPI(title="Portal Pai Vinny")
 
@@ -284,10 +287,12 @@ def pagina_resumo(t: str = ''):
     valido = bool(pend and pend.get('token') == t and not pend.get('enviado'))
     lmin   = pend.get('linhas_minimas', 10) if pend else 10
     etapa  = pend.get('etapa', '?') if pend else '?'
+    modo   = pend.get('modo', 'texto') if pend else 'texto'
     html = _RESUMO_HTML
     html = html.replace('__TOKEN__', t or '')
     html = html.replace('__LMIN__', str(lmin))
     html = html.replace('__ETAPA__', str(etapa))
+    html = html.replace('__MODO__', modo)
     html = html.replace('__VALIDO__', 'true' if valido else 'false')
     return html
 
@@ -323,6 +328,53 @@ def enviar_resumo(payload: ResumoIn):
     pend['enviado'] = True
     RESUMO_PEND.write_text(json.dumps(pend, ensure_ascii=False))
     return {"ok": True, "linhas": len(linhas)}
+
+# ── Resumo por FOTO (papel) — etapas >= FOTO_A_PARTIR ─────────────
+
+_EXT_POR_TIPO = {
+    'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png',
+    'image/webp': 'webp', 'image/heic': 'heic', 'image/heif': 'heif',
+}
+
+@app.post('/api/resumo-foto')
+async def enviar_resumo_foto(token: str = Form(...), titulo: str = Form(''),
+                            foto: UploadFile = File(...)):
+    pend = ler_pendente()
+    if not pend or pend.get('token') != token or pend.get('enviado'):
+        raise HTTPException(400, "Link inválido ou já utilizado. Volte ao terminal.")
+    ctype = (foto.content_type or '').lower()
+    if not ctype.startswith('image/'):
+        return JSONResponse(status_code=422, content={"ok": False, "erro": "Envie uma imagem (foto)."})
+    conteudo = await foto.read(MAX_FOTO_BYTES + 1)
+    if len(conteudo) > MAX_FOTO_BYTES:
+        return JSONResponse(status_code=422, content={"ok": False, "erro": "Foto muito grande (máx. 10 MB)."})
+    if not conteudo:
+        return JSONResponse(status_code=422, content={"ok": False, "erro": "Foto vazia."})
+    ext = _EXT_POR_TIPO.get(ctype, 'jpg')
+    nome = f"etapa{pend.get('etapa','?')}-{token}.{ext}"
+    FOTOS_DIR.mkdir(parents=True, exist_ok=True)
+    (FOTOS_DIR / nome).write_bytes(conteudo)
+    RESUMO_ENVIADO.write_text(json.dumps({
+        "token":  token,
+        "etapa":  pend.get('etapa'),
+        "tipo":   "foto",
+        "titulo": titulo.strip() or "Livro sem título",
+        "foto":   nome,
+        "ts":     datetime.now().isoformat(),
+    }, ensure_ascii=False))
+    pend['enviado'] = True
+    RESUMO_PEND.write_text(json.dumps(pend, ensure_ascii=False))
+    return {"ok": True, "foto": nome}
+
+@app.get('/api/foto/{nome}')
+def ver_foto(nome: str, senha: str = ''):
+    checar(senha)
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+', nome):   # anti path-traversal
+        raise HTTPException(400, "Nome inválido")
+    caminho = FOTOS_DIR / nome
+    if not caminho.is_file():
+        raise HTTPException(404)
+    return FileResponse(str(caminho))
 
 
 # ── Página HTML do resumo (mobile-first; auth por token) ──────────
@@ -366,32 +418,48 @@ _RESUMO_HTML = r"""<!DOCTYPE html>
 <div class="wrap">
   <header>
     <div class="tag">⚔ MINECRAFT QUEST</div>
-    <h1>✍️ Resumo do Livro — Etapa __ETAPA__</h1>
+    <h1 id="titulo-pagina">✍️ Resumo do Livro — Etapa __ETAPA__</h1>
   </header>
 
   <div id="form-area">
-    <div class="card">
+    <div class="card" id="regras-texto">
       <div class="regras">
         📖 Escreva com <b>suas próprias palavras</b> o que você aprendeu.<br>
         ✅ Mínimo de <b>__LMIN__ linhas</b> &nbsp;•&nbsp; cada linha com <b>20+ caracteres</b>.
       </div>
     </div>
+    <div class="card" id="regras-foto" style="display:none">
+      <div class="regras">
+        📝 Você escreveu o resumo <b>no papel</b>?<br>
+        📸 Tire uma <b>foto bem iluminada</b> da folha e envie. O seu pai vai
+        receber no painel dele. 💚
+      </div>
+    </div>
+
     <div class="card">
       <label for="titulo">Título do livro</label>
       <input id="titulo" type="text" placeholder="Ex.: O Pequeno Príncipe" autocomplete="off" />
     </div>
-    <div class="card">
+
+    <div class="card" id="card-texto">
       <label for="resumo">Seu resumo (uma ideia por linha)</label>
       <textarea id="resumo" placeholder="Escreva uma linha por ideia..."></textarea>
       <div class="contador" id="contador">0 / __LMIN__ linhas válidas</div>
     </div>
-    <button id="btn" onclick="enviar()">📤 Enviar resumo</button>
+
+    <div class="card" id="card-foto" style="display:none">
+      <label for="foto">📷 Foto do resumo no papel</label>
+      <input id="foto" type="file" accept="image/*" capture="environment" />
+      <img id="preview" style="display:none;width:100%;margin-top:12px;border-radius:10px" />
+    </div>
+
+    <button id="btn" onclick="enviar()">📤 Enviar</button>
     <div class="msg" id="msg"></div>
   </div>
 
   <div id="sucesso-area" class="final" style="display:none">
     <div class="emoji">🎉</div>
-    <h1>Resumo enviado!</h1>
+    <h1>Enviado!</h1>
     <p style="color:var(--dim);margin-top:10px">
       Pode voltar para o terminal — sua etapa vai liberar sozinha. 🟢
     </p>
@@ -409,11 +477,24 @@ _RESUMO_HTML = r"""<!DOCTYPE html>
 <script>
   var TOKEN = "__TOKEN__";
   var LMIN  = parseInt("__LMIN__", 10);
+  var MODO  = "__MODO__";
   var VALIDO = (__VALIDO__);
 
   if (!VALIDO) {
     document.getElementById('form-area').style.display = 'none';
     document.getElementById('invalido-area').style.display = 'block';
+  }
+
+  if (MODO === 'foto') {
+    document.getElementById('regras-texto').style.display = 'none';
+    document.getElementById('card-texto').style.display = 'none';
+    document.getElementById('regras-foto').style.display = 'block';
+    document.getElementById('card-foto').style.display = 'block';
+    document.getElementById('titulo-pagina').textContent = '📸 Resumo no papel — Etapa __ETAPA__';
+    document.getElementById('foto').addEventListener('change', function(e){
+      var f = e.target.files[0], img = document.getElementById('preview');
+      if (f) { img.src = URL.createObjectURL(f); img.style.display = 'block'; }
+    });
   }
 
   function linhasValidas() {
@@ -429,35 +510,45 @@ _RESUMO_HTML = r"""<!DOCTYPE html>
   }
   document.getElementById('resumo').addEventListener('input', atualizar);
 
+  function sucesso() {
+    document.getElementById('form-area').style.display='none';
+    document.getElementById('sucesso-area').style.display='block';
+  }
+  function falha(msg, txt) { var b=document.getElementById('btn'); b.disabled=false; msg.className='msg erro'; msg.textContent='❌ '+txt; }
+
   function enviar() {
     var titulo = document.getElementById('titulo').value.trim();
-    var resumo = document.getElementById('resumo').value;
     var msg = document.getElementById('msg');
     msg.className = 'msg';
     if (!titulo) { msg.textContent = '⚠️ Escreva o título do livro.'; msg.className='msg erro'; return; }
+    var btn = document.getElementById('btn');
+
+    if (MODO === 'foto') {
+      var f = document.getElementById('foto').files[0];
+      if (!f) { msg.textContent='⚠️ Tire/escolha a foto do resumo.'; msg.className='msg erro'; return; }
+      btn.disabled = true; msg.textContent = 'Enviando foto...';
+      var fd = new FormData();
+      fd.append('token', TOKEN); fd.append('titulo', titulo); fd.append('foto', f);
+      fetch('/api/resumo-foto', { method:'POST', body: fd })
+        .then(function(r){ return r.json().then(function(d){ return {s:r.status, d:d}; }); })
+        .then(function(res){ if (res.s===200 && res.d.ok) sucesso(); else falha(msg, res.d.erro||'Não foi possível enviar.'); })
+        .catch(function(){ falha(msg, 'Erro de conexão. Tente de novo.'); });
+      return;
+    }
+
+    var resumo = document.getElementById('resumo').value;
     if (linhasValidas().length < LMIN) {
       msg.className='msg erro';
       msg.textContent = '⚠️ Faltam linhas válidas (' + linhasValidas().length + '/' + LMIN + ').';
       return;
     }
-    var btn = document.getElementById('btn');
     btn.disabled = true; msg.textContent = 'Enviando...';
     fetch('/api/resumo-enviar', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({token:TOKEN, titulo:titulo, resumo:resumo})
     }).then(function(r){ return r.json().then(function(d){ return {s:r.status, d:d}; }); })
-      .then(function(res){
-        if (res.s === 200 && res.d.ok) {
-          document.getElementById('form-area').style.display='none';
-          document.getElementById('sucesso-area').style.display='block';
-        } else {
-          btn.disabled = false; msg.className='msg erro';
-          msg.textContent = '❌ ' + (res.d.erro || 'Não foi possível enviar.');
-        }
-      }).catch(function(){
-        btn.disabled=false; msg.className='msg erro';
-        msg.textContent='❌ Erro de conexão. Tente de novo.';
-      });
+      .then(function(res){ if (res.s===200 && res.d.ok) sucesso(); else falha(msg, res.d.erro||'Não foi possível enviar.'); })
+      .catch(function(){ falha(msg, 'Erro de conexão. Tente de novo.'); });
   }
 </script>
 </body>
