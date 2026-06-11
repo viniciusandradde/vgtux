@@ -20,6 +20,44 @@ chmod 755 /data
 mkdir -p /home/jogador/minecraft
 chown -R jogador:jogador /home/jogador/minecraft
 
+# ── Minecraft no CELULAR: Geyser + Floodgate (ponte Bedrock, UDP 19132) ──
+# Provisiona os plugins DENTRO do volume (idempotente: só baixa se faltar),
+# porque o volume sombreia o conteúdo da imagem. Falha de download não derruba
+# o container (|| true) — o terminal/quest seguem funcionando.
+MCDIR=/home/jogador/minecraft
+PLUGINS="$MCDIR/plugins"
+GEYSER_CFG="$PLUGINS/Geyser-Spigot"
+mkdir -p "$GEYSER_CFG"
+if [ ! -s "$PLUGINS/Geyser-Spigot.jar" ]; then
+  echo "→ Baixando Geyser (ponte Bedrock/celular)..."
+  curl -fsSL -o "$PLUGINS/Geyser-Spigot.jar" \
+    "https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot" \
+    || echo "  (aviso: download do Geyser falhou; tenta de novo no próximo start)"
+fi
+if [ ! -s "$PLUGINS/floodgate-spigot.jar" ]; then
+  echo "→ Baixando Floodgate..."
+  curl -fsSL -o "$PLUGINS/floodgate-spigot.jar" \
+    "https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot" \
+    || echo "  (aviso: download do Floodgate falhou; tenta de novo no próximo start)"
+fi
+# Config mínima do Geyser: porta Bedrock 19132 + auth pelo Floodgate
+if [ ! -f "$GEYSER_CFG/config.yml" ]; then
+  cat > "$GEYSER_CFG/config.yml" <<'YML'
+bedrock:
+  port: 19132
+remote:
+  auth-type: floodgate
+YML
+fi
+# Servidor Java em offline-mode (necessário p/ o Bedrock entrar via Floodgate)
+touch "$MCDIR/server.properties"
+if grep -q '^online-mode=' "$MCDIR/server.properties"; then
+  sed -i 's/^online-mode=.*/online-mode=false/' "$MCDIR/server.properties"
+else
+  printf 'online-mode=false\n' >> "$MCDIR/server.properties"
+fi
+chown -R jogador:jogador "$MCDIR"
+
 # Propaga variáveis para a sessão do filho (su - jogador é login shell;
 # pam_env lê /etc/environment)
 {

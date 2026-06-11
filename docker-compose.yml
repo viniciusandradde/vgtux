@@ -36,7 +36,8 @@ services:
       ADMIN_DOMAIN: ${ADMIN_DOMAIN:-adminvgtux.vsanexus.com}
 
     ports:
-      - "${MC_PORT:-25565}:25565"    # Minecraft (cliente do jogo conecta aqui)
+      - "${MC_PORT:-25565}:25565"                       # Minecraft Java (PC)
+      - "${MC_BEDROCK_PORT:-19132}:19132/udp"           # Minecraft Bedrock (celular, via Geyser)
 
     volumes:
       # Casa do filho: persiste a pasta 'aventura' (etapas) + o servidor/mundo Minecraft

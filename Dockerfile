@@ -60,5 +60,5 @@ RUN echo "eula=true" > /home/jogador/minecraft/eula.txt \
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-EXPOSE 7681 25565
+EXPOSE 7681 25565 19132/udp
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

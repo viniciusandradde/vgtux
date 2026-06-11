@@ -39,10 +39,28 @@ fi
 
 cd "$HOME/minecraft" || { echo "Pasta minecraft não encontrada."; exit 1; }
 
+# IP público da VPS (para conectar de fora). Cai para um aviso se offline.
+IP_PUB="$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || echo '<IP-da-VPS>')"
+
 echo
 echo "  🎉  RECOMPENSA DESBLOQUEADA! Iniciando o servidor Minecraft..."
-echo "      RAM ${RAM_MIN}–${RAM_MAX}  •  conecte o cliente em <IP-da-VPS>:25565"
+echo "      RAM ${RAM_MIN}–${RAM_MAX}  •  aguarde aparecer 'Done' abaixo."
 echo "      Para parar, digite 'stop' no console."
+echo
+echo "  ┌──────────────────────────────────────────────────────────────┐"
+echo "  │  📱  COMO ENTRAR PELO CELULAR (Minecraft Bedrock / Pocket)     │"
+echo "  ├──────────────────────────────────────────────────────────────┤"
+echo "  │  1) Abra o Minecraft no celular                               │"
+echo "  │  2) Toque em JOGAR → aba SERVIDORES → 'Adicionar servidor'     │"
+echo "  │  3) Nome do servidor:  Pai Vinny                              │"
+echo "  │     Endereço (IP):     ${IP_PUB}"
+echo "  │     Porta:             19132                                  │"
+echo "  │  4) Salvar e tocar no servidor para ENTRAR! 🎮                │"
+echo "  ├──────────────────────────────────────────────────────────────┤"
+echo "  │  💻  No COMPUTADOR (Minecraft Java):  ${IP_PUB}:25565"
+echo "  └──────────────────────────────────────────────────────────────┘"
+echo "      (Se não conectar: peça pro responsável abrir a porta 19132/UDP"
+echo "       no firewall da nuvem. O servidor só fica no ar enquanto isto roda.)"
 echo
 
 exec java -Xms"${RAM_MIN}" -Xmx"${RAM_MAX}" -jar paper.jar nogui
